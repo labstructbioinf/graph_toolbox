@@ -8,6 +8,10 @@ def delete_indices(tensor, indices, return_mask=False):
 
 def mask_sequential_connections(u,v):
     return th.abs(u - v) < 2
+
+
+def argwhere(condition):
+    return np.nonzero(condition, as_tuple=True)
     
         
     
