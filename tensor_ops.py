@@ -43,6 +43,22 @@ def rmsd_chunk(r1, r2):
     naive_norm = th.tensor(dist.size()).prod().float().sqrt()
     rmsd = dist.pow(2).sum().sqrt()/naive_norm
     return rmsd
+
+
+
+def diff_slice(indices):
+    '''
+    split indices into continious groups
+    '''
+    indices_diff = (indices[1:] - indices[:-1]) > 2
+    start = th.nonzero(xi).flatten()
+    stop = start.clone()
+    start = th.cat((th.tensor([0]), start)) 
+    stop = th.cat((stop, th.tensor([indices.shape[0]])))
+    seq1_slices = []
+    for i,j in zip(start, stop):
+        seq1_slices.append(th.unique_consecutive(x.narrow(0, i, j-i)))
+    return seq1_slices
     
         
     
