@@ -60,13 +60,19 @@ def parse_graph_data(path, chain):
         ca_ca_matrix = distance_matrix(ca_xyz, ca_xyz)
     return ca_ca_matrix, sequence, ss
 
-def parse_graph_data_torch(path, chain):
-    
-    if not os.path.isfile(path):
+def parse_graph_data_torch(path, pdb_chain):
+    '''
+    parses specified PDB file and computes
+    ca_ca_matrix and sequence as 1-21 numbers
+    '''
+    if not path.is_file():
         FileNotFoundError('no such file', path)
-        
-    file = atomium.open(path)
-    chain = file.model.chain(chain)
+    path_str = str(path)
+    file = atomium.open(path_str)
+    chain = file.model.chain(pdb_chain)
+
+    if chain is None:
+        KeyError(f'no chain: {chain} for {path}')
     sequence = list(map(map_residue, chain.residues()))
     ca_xyz = list(map(get_CA_xyz, chain.residues()))
     
@@ -78,16 +84,19 @@ def parse_graph_data_torch(path, chain):
     return ca_ca_matrix, sequence
 
 
-def parse_xyz(path, chain):
+def parse_xyz(path, chain, get_pdb_ss=False):
 
+    
     if not os.path.isfile(path):
         FileNotFoundError('no such file', path)
         
     file = atomium.open(path)
     chain = file.model.chain(chain)
-    sequence = list(map(map_residue, chain.residues()))
+    sequence = list(map(lambda x: x.code, chain.residues()))
     ca_xyz = list(map(get_CA_xyz, chain.residues()))
-    
-
     ca_xyz = th.FloatTensor(ca_xyz)
-    return ca_xyz, sequence
+    if get_pdb_ss:
+        secondary = list(map(get_ss_label, chain.residues()))
+        return ca_xyz, sequence, secondary
+    else:
+        return ca_xyz, sequence
