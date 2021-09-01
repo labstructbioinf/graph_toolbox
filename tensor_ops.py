@@ -1,3 +1,5 @@
+
+
 import torch as th
 
 def delete_indices(tensor, indices, return_mask=False):
@@ -14,10 +16,9 @@ def argwhere(condition):
     return np.nonzero(condition, as_tuple=True)
 
 
-
 def diagonalize(R):
     '''
-    transform set of points eg. resisues x,y,z coords
+    transform set of points eg. residues x,y,z coords
     to new coordinates where inertia tensor is diagonal
     '''
     R = R-R.mean(0)
@@ -45,6 +46,24 @@ def rmsd_chunk(r1, r2):
     return rmsd
 
 
+def offdiagonal_indices(arr):
+    '''
+    calculates all possible offdiagonal indices over given 2D tensor
+    
+    '''
+    assert arr.ndim == 2
+    
+    max_shift_left, max_shift_right = arr.shape
+    arr_left = -th.arange(-max_shift_left, 0, 1).unsqueeze(1)
+    arr_zeros = th.zeros_like(arr_left)
+    left_offdiagonal_arr = th.cat((arr_left, arr_zeros), dim=1)
+
+    arr_right = th.arange(0, max_shift_right, 1).unsqueeze(1)
+    arr_zeros = th.zeros_like(arr_right)
+    right_offdiagonal_arr = th.cat((arr_zeros, arr_right), dim=1)
+
+    indices = th.cat((left_offdiagonal_arr, right_offdiagonal_arr), axis=0)
+    return indices
 
 def diff_slice(indices):
     '''

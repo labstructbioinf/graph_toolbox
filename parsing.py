@@ -1,5 +1,6 @@
 import os
 from functools import partial
+from collections import namedtuple
 
 import torch as th
 import numpy as np
@@ -12,6 +13,8 @@ protein_letters_3to1 = {k.upper() : v for k,v in protein_letters_3to1.items()}
 protein_letters = 'ACDEFGHIKLMNPQRSTVWY' + 'X'
 residue_to_num_dict = {res : num for num, res in enumerate(protein_letters)}
 map_residue = lambda res : residue_to_num_dict[res.code]
+
+protein_struct = namedtuple('protein_struct', ['path', 'chain', 'xyz', 'seq', 'ss', 'pdb_list'])
 
 def get_atom_xyz(residue, atom_name):
     for a in residue.atoms():
@@ -83,6 +86,19 @@ def parse_graph_data_torch(path, pdb_chain):
     
     return ca_ca_matrix, sequence
 
+def parse_sequence(path, pdb_chain):
+    
+    if not path.is_file():
+        FileNotFoundError('no such file', path)
+    path_str = str(path)
+    file = atomium.open(path_str)
+    chain = file.model.chain(pdb_chain)
+
+    if chain is None:
+        KeyError(f'no chain: {chain} for {path}')
+    sequence = list(map(lambda res : res.code, chain.residues()))
+    return sequence
+
 
 def parse_xyz(path, chain, get_pdb_ss=False):
 
@@ -100,3 +116,27 @@ def parse_xyz(path, chain, get_pdb_ss=False):
         return ca_xyz, sequence, secondary
     else:
         return ca_xyz, sequence
+    
+    
+    
+def parse_pdb_indices(path, chain):
+    
+    pdb_list = [s.id.split('.')[1] for s in atomium.open(path).model.chain(chain).residues()]
+    pdb_list = [int(idx) for idx in pdb_list]
+    pdb_list = th.LongTensor(pdb_list)
+    return pdb_list
+
+
+def read_struct(path, chain):
+
+    
+    xyz, seq, ss = parse_xyz(path, chain, get_pdb_ss=True)
+    pdb_list = parse_pdb_indices(path, chain)
+    data = protein_struct(path=path,
+                         chain=chain,
+                         xyz=xyz,
+                         seq=seq,
+                         ss=ss,
+                         pdb_list=pdb_list)
+    return data
+    
