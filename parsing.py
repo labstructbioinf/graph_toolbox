@@ -14,7 +14,7 @@ protein_letters = 'ACDEFGHIKLMNPQRSTVWY' + 'X'
 residue_to_num_dict = {res : num for num, res in enumerate(protein_letters)}
 map_residue = lambda res : residue_to_num_dict[res.code]
 
-protein_struct = namedtuple('protein_struct', ['path', 'chain', 'xyz', 'seq', 'ss', 'pdb_list'])
+protein_struct = namedtuple('protein_struct', ['path', 'pdb_chain', 'chain', 'xyz', 'seq', 'ss', 'pdb_list'])
 
 def get_atom_xyz(residue, atom_name):
     for a in residue.atoms():
@@ -127,12 +127,16 @@ def parse_pdb_indices(path, chain):
     return pdb_list
 
 
-def read_struct(path, chain):
-
+def read_struct(path, pdb_chain):
+    '''
+    path (str) location on structure file
+    '''
+    pdb, chain = pdb_chain.split('_')
     
     xyz, seq, ss = parse_xyz(path, chain, get_pdb_ss=True)
     pdb_list = parse_pdb_indices(path, chain)
     data = protein_struct(path=path,
+                          pdb_chain=pdb_chain,
                          chain=chain,
                          xyz=xyz,
                          seq=seq,
