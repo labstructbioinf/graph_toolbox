@@ -71,7 +71,7 @@ class PyMolColor:
         if not fname.endswith('.pml'):
             fname = fname + '.pml'
         with open(fname, 'wt') as f:
-            f.write(f'fetch {pdb}\n')
+            f.write(f'fetch {pdb}, async=0\n')
             for i, (ri, ei) in enumerate(zip(residues, embeddings)):
                 if ri is None:
                     continue
