@@ -122,8 +122,8 @@ def parse_xyz(path, chain, get_pdb_ss=False):
 def parse_pdb_indices(path, chain):
     
     pdb_list = [s.id.split('.')[1] for s in atomium.open(path).model.chain(chain).residues()]
-    pdb_list = [int(idx) for idx in pdb_list]
-    pdb_list = th.LongTensor(pdb_list)
+    #pdb_list = [int(idx) for idx in pdb_list]
+    #pdb_list = th.LongTensor(pdb_list)
     return pdb_list
 
 

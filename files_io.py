@@ -4,9 +4,8 @@ import pickle
 import gzip
 
 '''
-strorage for quick function
+storage for quick function
 '''
-
 
 def get_json(file):
     '''
