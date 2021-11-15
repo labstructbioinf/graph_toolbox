@@ -5,4 +5,6 @@ from .parsing import parse_graph_data_torch, parse_xyz
 from .pymol.draw import PyMolColor
 from .files_io import load_gpickle
 
+from .feature import read_struct
+
 
