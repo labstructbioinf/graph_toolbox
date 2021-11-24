@@ -73,17 +73,14 @@ def parse_graph_data_torch(path, pdb_chain):
     path_str = str(path)
     file = atomium.open(path_str)
     chain = file.model.chain(pdb_chain)
-
     if chain is None:
         KeyError(f'no chain: {chain} for {path}')
     sequence = list(map(map_residue, chain.residues()))
     ca_xyz = list(map(get_CA_xyz, chain.residues()))
     
-
     ca_xyz = th.FloatTensor(ca_xyz)
     sequence = th.LongTensor(sequence)
     ca_ca_matrix = th.cdist(ca_xyz, ca_xyz)
-    
     return ca_ca_matrix, sequence
 
 def parse_sequence(path, pdb_chain):
@@ -132,7 +129,6 @@ def read_struct(path, pdb_chain):
     path (str) location on structure file
     '''
     pdb, chain = pdb_chain.split('_')
-    
     xyz, seq, ss = parse_xyz(path, chain, get_pdb_ss=True)
     pdb_list = parse_pdb_indices(path, chain)
     data = protein_struct(path=path,
