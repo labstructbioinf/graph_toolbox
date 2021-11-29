@@ -7,19 +7,21 @@ from .params import (HYDROPHOBIC,
                      SALT_BRIDGE_C1,
                      SALT_BRIDGE_C2,
                      CHARGE,
-                    VDW_RADIUS,
+                    SIGMA,
+                     EPSILON,
                     HYDROGEN_ACCEPTOR,
                     HYDROGEN_DONOR)
 
 
 nan_type = float('nan')
 atom_id = {ch : i for i, ch in enumerate(CHARGE.keys())}
-EPSILON = th.Tensor([1e-6])
+EPS = th.Tensor([78*1e-2]) # unit Farad / angsterm
 
 def read_struct(pdb_loc, chain, t):
     '''
     params:
         pdb_loc (str or atomium.model)
+        t (float) residue-residue distance criteria
     return distances, edge binary feats, u, v for feats
     '''
     if isinstance(pdb_loc, str):
@@ -28,12 +30,15 @@ def read_struct(pdb_loc, chain, t):
         data = pdb_loc
     else:
         raise KeyError('wrong pdb_loc')
+    if not isinstance(t, (int, float)):
+        raise ValueError(f'threshold must be number, given: {type(t)}')
+    else: 
+        if t < 5:
+            print('dumb threshold')
 
-    atoms = []
-    name = []
+    atoms, name = [], []
     ca_xyz, cb_xyz = [], []
-    residues = []
-    residues_name = []
+    residues, residues_name = [], []
     is_side_chain = []
     res_at_num = []
     for chain in data.chains():
@@ -55,31 +60,26 @@ def read_struct(pdb_loc, chain, t):
                 residues_name.append(res.name)
             if 'CB' not in r_at_name:
                 cb_xyz.append((nan_type, nan_type, nan_type))
-
+            if 'CA' not in r_at_name:
+                raise KeyError('missing CA atom')
+    
     name_base = [n[0] for n in name]
     at_charge = [CHARGE[n] for n in name_base]
-    at_vdw = [VDW_RADIUS[n] for n in name_base]
+    at_vdw = [SIGMA[n] for n in name_base]
     atom_arr = [atom_id[n] for n in name_base]
-    at_xyz = th.FloatTensor(atoms)
-    at_dist = th.cdist(at_xyz, at_xyz)
-    at_id = th.LongTensor(atom_arr)
-    at_is_side = th.BoolTensor(is_side_chain)
-
+    at_eps = [EPSILON[n] for n in name_base]
+    
     res_id = th.LongTensor(residues)
     res_xyz = th.FloatTensor(ca_xyz)
     res_dist = th.cdist(res_xyz, res_xyz)
     res_cb = th.FloatTensor(cb_xyz)
-    
+
     is_res_hf = [True if r in HYDROPHOBIC else False for r in residues_name]
-    #is_at_rg = [True if at is False else False for at in is_side_chain ]
     is_at_hb_a = [True if r in HYDROGEN_ACCEPTOR else False for r in name]
     is_at_hb_d = [True if r in HYDROGEN_DONOR else False for r in name]
     is_res_ar = [True if r in AROMATIC else False for r in residues_name]
-
     is_res_cpi = [True if at in CATION_PI else False for at in name]
-
     is_res_arg = [True if r in {'ARG'} else False for r in residues_name]
-
     is_at_sb_c1 = [True if at in SALT_BRIDGE_C1 else False for at in name]
     is_res_sb_c1 = [True if at in {'ARG', 'LYS'} else False for at in residues_name]
     is_at_sb_c2 = [True if at in {'ARG', 'GLU'} else False for at in name]
@@ -87,25 +87,27 @@ def read_struct(pdb_loc, chain, t):
 
     at_xyz = th.FloatTensor(atoms)
     at_dist = th.cdist(at_xyz, at_xyz)
-    at_id = th.LongTensor(atom_arr)
+    at_id = th.LongTensor(at_eps)
+    sigma = th.FloatTensor(at_vdw)
+    epsilon = th.FloatTensor(at_eps)
     at_is_side = th.BoolTensor(is_side_chain)
     at_is_hba = th.BoolTensor(is_at_hb_a)
     at_is_hbd = th.BoolTensor(is_at_hb_d)
     
-    res_id = th.LongTensor(residues)
-    res_xyz = th.FloatTensor(ca_xyz)
-    res_dist = th.cdist(res_xyz, res_xyz)
-    res_cb = th.FloatTensor(cb_xyz)
-    
+    at_dist_inv = 1/(at_dist + 1e-6)
+    # set inverse of the atom self distance to zero to avoid nan/inf when summing
+    at_dist_inv.fill_diagonal_(0) 
     atat_charge = th.FloatTensor(at_charge).view(-1, 1)
     atat_charge = atat_charge * atat_charge.view(1, -1)
-    atat_vdw = th.FloatTensor(at_vdw).view(-1, 1)
-    atat_vdw = atat_vdw * atat_vdw.view(1, -1)
-
-    at_dist_inv = EPSILON/th.pow(at_dist + 1e-2, 2)
-    at_dist_inv6 = th.pow((at_dist + 1e-2)/EPSILON, 6)
-    at_dist_inv12 = th.pow(at_dist_inv6, 2)
+    sigma = (sigma.view(-1, 1) + sigma.view(1, -1))/2
+    epsilon = th.sqrt(epsilon.view(-1, 1) * epsilon.view(1, -1))
     
+    lj_r = sigma*at_dist_inv * (at_dist < 10)
+    lj6 = th.pow(lj_r, 6) 
+    lj12 = th.pow(lj_r, 12)
+    #print('lj', lj_r)
+    #print('lj12', lj12)
+    #print('lj12', lj6)
     disulfde = (at_id == 4) & (at_dist < 2.2)
     hydrophobic = (at_dist < 5.0) & (at_is_side == False) & th.BoolTensor(is_res_hf)
     cation_pi = (at_dist < 6) & th.BoolTensor(is_res_cpi)
@@ -116,7 +118,7 @@ def read_struct(pdb_loc, chain, t):
     sb_tmp2 = th.BoolTensor(is_res_sb_c1).view(-1, 1) & th.BoolTensor(is_res_sb_c2).view(1, -1)
 
     salt_bridge = sb_tmp1 & (at_dist < 5.0) & sb_tmp2
-
+    
     feats = th.cat((disulfde.unsqueeze(2),
                    hydrophobic.unsqueeze(2),
                    cation_pi.unsqueeze(2),
@@ -124,12 +126,16 @@ def read_struct(pdb_loc, chain, t):
                    salt_bridge.unsqueeze(2),
                    hbond.unsqueeze(2)), dim=2)
     feats = feats.float()
-    coulomb_force = at_dist_inv * atat_charge
-    lenard_jones_force = 4 * (1/at_dist_inv12 - 1/at_dist_inv6 )
+    coulomb_energy =  (1/3.14*EPS) * atat_charge * at_dist_inv
+    lenard_jones_energy = epsilon* (lj12 - lj6 ) 
+    energy_sum = coulomb_energy + lenard_jones_energy
     feats = th.cat((feats, 
-                    coulomb_force.unsqueeze(2),
-                   lenard_jones_force.unsqueeze(2)), dim=2)
-    
+                    coulomb_energy.unsqueeze(2),
+                   lenard_jones_energy.unsqueeze(2),
+                   energy_sum.unsqueeze(2)),
+                   dim=2)
+    # change feature resolution
+    # from atomic level to residue level
     efeat_list = list()
     first_dim_split = feats.split(res_at_num, 0)
     for i in range(len(res_at_num)):
@@ -138,20 +144,21 @@ def read_struct(pdb_loc, chain, t):
     u, v = th.where(res_dist < t)
     uv = th.where(res_dist.ravel() < t)[0]
     feats_at = th.cat([efeat_list[e].sum((0,1), keepdim=True) for e in uv], dim=0)
+    feats_at = feats_at.clip(-20, 20)
     efeats = th.zeros_like(res_dist)
-    
+    # gather residue level feature, such as edge criteria
     cb1 = th.linalg.norm(res_cb - res_xyz, dim=1, keepdim=True)
     cb2 = cb1.clone().swapdims(0, 1)
-    tn_cb12 = cb1 / (cb2 + 1e-2)
+    tn_cb12 = cb1 / (cb2 + 1e-5)
     tn_cb12[th.isnan(tn_cb12)] = -1
-    inv_ca12 = 1/(res_dist - 1e-3)
-
+    inv_ca12 = 1/(res_dist + 1e-5)
+    inv_ca12.fill_diagonal_(0)
     res_id_short = th.arange(0, res_id.max()+1, 1)
     is_seq = th.abs(res_id_short.unsqueeze(0) - res_id_short.unsqueeze(1))
     is_self = is_seq == 0
     is_seq_0 = is_seq == 1
-    is_seq_1 = is_seq == 2
-    is_struct_0 = ~is_seq_0
+    is_seq_1 = is_seq > 5
+    is_struct_0 = is_seq > 1
     feats_res = th.cat((tn_cb12.unsqueeze(2),
                        inv_ca12.unsqueeze(2),
                         is_self.unsqueeze(2),
@@ -162,3 +169,12 @@ def read_struct(pdb_loc, chain, t):
     feats_all = th.cat((feats_at.squeeze(), feats_res), dim=-1)
     
     return u, v, feats_all
+
+
+def calc_named(pdb_loc, chain, t):
+    name_i = ['disulfide', 'hydrophobic', 'cation_pi', 'arg_arg', 'salt_bridge', 'hbond']
+    name_i += ['c', 'lj', 'e']
+    name_i += ['cbcb', 'dist', 'self', 'is_seq', 'is_seq_not', 'is_struct']
+    _, _, feats = read_struct(pdb_loc, chain, t)
+    return feats, name_i
+
