@@ -99,12 +99,16 @@ def parse_sequence(path, pdb_chain):
 
 def parse_xyz(path, chain, get_pdb_ss=False):
 
-    
-    if not os.path.isfile(path):
-        FileNotFoundError('no such file', path)
-        
-    file = atomium.open(path)
-    chain = file.model.chain(chain)
+    if isinstance(path, str):
+        if not os.path.isfile(path):
+            raise KeyError(f'path: {path} doesn\'t exist')
+        else:
+            data = atomium.open(path).model
+            chain = data.chain(chain)
+    elif isinstance(path, atomium.structures.Model):
+        chain = path.chain(chain)
+    else:
+        raise KeyError(f'invalid path arg type {path}')
     sequence = list(map(lambda x: x.code, chain.residues()))
     ca_xyz = list(map(get_CA_xyz, chain.residues()))
     ca_xyz = th.FloatTensor(ca_xyz)
@@ -113,20 +117,29 @@ def parse_xyz(path, chain, get_pdb_ss=False):
         return ca_xyz, sequence, secondary
     else:
         return ca_xyz, sequence
-    
-    
-    
+
+
 def parse_pdb_indices(path, chain):
     
-    pdb_list = [s.id.split('.')[1] for s in atomium.open(path).model.chain(chain).residues()]
-    #pdb_list = [int(idx) for idx in pdb_list]
-    #pdb_list = th.LongTensor(pdb_list)
+    if isinstance(path, str):
+        if not os.path.isfile(path):
+            raise KeyError(f'path: {path} doesn\'t exist')
+        else:
+            data = atomium.open(path).model
+            chain = data.chain(chain)
+    elif isinstance(path, atomium.structures.Model):
+        chain = path.chain(chain)
+    else:
+        raise KeyError(f'invalid path arg type {path}')
+    pdb_list = [
+        s.id.split('.')[1] for s in chain.residues()
+    ]
     return pdb_list
 
 
 def read_struct(path, pdb_chain):
     '''
-    path (str) location on structure file
+    path (str, context) location on structure file
     '''
     pdb, chain = pdb_chain.split('_')
     xyz, seq, ss = parse_xyz(path, chain, get_pdb_ss=True)
