@@ -1,6 +1,7 @@
 import os
 from functools import partial
 from collections import namedtuple
+from typing import List
 
 import torch as th
 import numpy as np
@@ -83,6 +84,7 @@ def parse_graph_data_torch(path, pdb_chain):
     ca_ca_matrix = th.cdist(ca_xyz, ca_xyz)
     return ca_ca_matrix, sequence
 
+
 def parse_sequence(path, pdb_chain):
     
     if not path.is_file():
@@ -97,8 +99,13 @@ def parse_sequence(path, pdb_chain):
     return sequence
 
 
-def parse_xyz(path, chain, get_pdb_ss=False):
-
+def parse_xyz(path: str, chain: str, get_pdb_ss:bool=False)->th.FloatTensor, List[str]:
+    '''
+    
+    return:
+        ca_xyz (torch.Tensor), sequence (list)
+        
+    '''
     if isinstance(path, str):
         if not os.path.isfile(path):
             raise KeyError(f'path: {path} doesn\'t exist')
@@ -144,6 +151,8 @@ def read_struct(path, pdb_chain):
     pdb, chain = pdb_chain.split('_')
     xyz, seq, ss = parse_xyz(path, chain, get_pdb_ss=True)
     pdb_list = parse_pdb_indices(path, chain)
+    if not isinstance(path, str):
+        path = 'none'
     data = protein_struct(path=path,
                           pdb_chain=pdb_chain,
                          chain=chain,

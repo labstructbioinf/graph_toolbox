@@ -4,11 +4,12 @@ import os
 import pickle
 import gzip
 import tempfile
+from typing import List, Union
 
 import atomium
 
 
-def get_json(file):
+def get_json(file: str):
     '''
     read json to object
     '''
@@ -18,7 +19,7 @@ def get_json(file):
     return data
 
 
-def save_json(file, data):
+def save_json(file: str, data: Union[dict, list]):
     '''
     save json to file
     '''
@@ -28,7 +29,7 @@ def save_json(file, data):
         json.dump(data, f)
     
     
-def load_gpickle(file):
+def load_gpickle(file: str):
     '''
     params:
         file (str) path to pickled object
@@ -44,7 +45,7 @@ def load_gpickle(file):
             data = pickle.load(f)
     return data
 
-def save_gpickle(obj, file):
+def save_gpickle(obj, file: str):
     '''
     pickles `obj` if file endswith .gz then zip pickle
     '''
@@ -60,7 +61,7 @@ def save_gpickle(obj, file):
         with open(file, 'wb') as f:
             pickle.dump(obj, f)
             
-def unpack_gzip_to_pdb_atomium_obj(gzip_file_path):
+def unpack_gzip_to_pdb_atomium_obj(gzip_file_path: str):
     '''
     transform gzip pdb file to atomium.Model object.
     return:

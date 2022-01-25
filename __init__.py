@@ -4,5 +4,6 @@ from .pymol.draw import PyMolColor
 from .io import load_gpickle
 
 from .feature import read_struct
+from .plot import tensor_to_3d_position
 
 
