@@ -19,7 +19,7 @@ def get_json(file: str):
     return data
 
 
-def save_json(file: str, data: Union[dict, list]):
+def save_json(data: Union[dict, list], file: str):
     '''
     save json to file
     '''

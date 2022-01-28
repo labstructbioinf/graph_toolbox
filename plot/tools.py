@@ -1,4 +1,4 @@
-from typing import Dist
+from typing import Dict
 import torch as th
 
 def tensor_to_3d_position(tensor: th.FloatTensor) -> Dict[int, list]:

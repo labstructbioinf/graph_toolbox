@@ -1,7 +1,7 @@
 import os
 from functools import partial
 from collections import namedtuple
-from typing import List
+from typing import List, Union
 
 import torch as th
 import numpy as np
@@ -99,9 +99,12 @@ def parse_sequence(path, pdb_chain):
     return sequence
 
 
-def parse_xyz(path: str, chain: str, get_pdb_ss:bool=False)->th.FloatTensor, List[str]:
+def parse_xyz(path: Union[str, atomium.structures.Model],
+              chain: Union[str, None] = None,
+              get_pdb_ss:bool=False)->(th.FloatTensor, List[str]):
     '''
-    
+    params:
+        chain (str, None) default None if str read chain if None read all
     return:
         ca_xyz (torch.Tensor), sequence (list)
         
@@ -111,9 +114,9 @@ def parse_xyz(path: str, chain: str, get_pdb_ss:bool=False)->th.FloatTensor, Lis
             raise KeyError(f'path: {path} doesn\'t exist')
         else:
             data = atomium.open(path).model
-            chain = data.chain(chain)
+            chain = data.chain(chain) if chain is not None else data
     elif isinstance(path, atomium.structures.Model):
-        chain = path.chain(chain)
+        chain = path.chain(chain) if chain is not None else path
     else:
         raise KeyError(f'invalid path arg type {path}')
     sequence = list(map(lambda x: x.code, chain.residues()))

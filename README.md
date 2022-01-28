@@ -3,7 +3,7 @@ utilities for graph-like data processing and neural network related
 
 ## IO
 ```python
-save_json(file: str, data: Union[dict, list])
+save_json(data: Union[dict, list], file: str)
 load_gpickle(file: str)
 save_gpickle(obj, file: str)
 unpack_gzip_to_pdb_atomium_obj(gzip_file_path: str)

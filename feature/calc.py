@@ -1,5 +1,5 @@
 '''script for calculating residue - residue interactions'''
-from typing import Union
+from typing import Union, Tuple
 
 import atomium
 import torch as th
@@ -22,12 +22,18 @@ CLIP_MAX = th.FloatTensor([1,1,1,1,1,1,10,10,10,10,1,1,1,1,1,1])
 CLIP_MIN = th.FloatTensor([0,0,0,0,0,0,-10,-10,-10,1e-20,0,0,0,0,0,0])
 
 
-def read_struct(pdb_loc: Union[str,atomium.structures.Model], chain: str, t: int):
+def read_struct(pdb_loc: Union[str, atomium.structures.Model],
+                chain: str,
+                t: int) -> Tuple[th.Tensor]:
     '''
+    params:
+        pdb_loc (str, atomium.Model) 
+        chain (str) one letter pdb code
+        t (int) contact distance threshold
     params:
         pdb_loc (str or atomium.model)
         t (float) residue-residue distance criteria
-    return distances, edge binary feats, u, v for feats
+    return u, v for feats
     '''
     if isinstance(pdb_loc, str):
         data = atomium.open(pdb_loc).model
@@ -40,33 +46,33 @@ def read_struct(pdb_loc: Union[str,atomium.structures.Model], chain: str, t: int
     else: 
         if t < 5:
             print('dumb threshold')
-
+    
+    data = data.chain(chain)
     atoms, name = [], []
     ca_xyz, cb_xyz = [], []
     residues, residues_name = [], []
     is_side_chain = []
     res_at_num = []
-    for chain in data.chains():
-        for i, res in enumerate(chain.residues()):
-            r_at_name = [r.name for r in res.atoms()]
-            res_at_num.append(len(r_at_name))
-            for atom in res.atoms():
-                n = atom.name
-                if n == 'CA':
-                    ca_xyz.append(atom.location)
-                elif n == 'CB':
-                    cb_xyz.append(atom.location)
-                elif len(n) == 3:
-                    n = n[:2]
-                name.append(n)
-                is_side_chain.append(atom.is_side_chain)
-                atoms.append(atom.location)
-                residues.append(i)
-                residues_name.append(res.name)
-            if 'CB' not in r_at_name:
-                cb_xyz.append((nan_type, nan_type, nan_type))
-            if 'CA' not in r_at_name:
-                raise KeyError('missing CA atom')
+    for i, res in enumerate(data.residues()):
+        r_at_name = [r.name for r in res.atoms()]
+        res_at_num.append(len(r_at_name))
+        for atom in res.atoms():
+            n = atom.name
+            if n == 'CA':
+                ca_xyz.append(atom.location)
+            elif n == 'CB':
+                cb_xyz.append(atom.location)
+            elif len(n) == 3:
+                n = n[:2]
+            name.append(n)
+            is_side_chain.append(atom.is_side_chain)
+            atoms.append(atom.location)
+            residues.append(i)
+            residues_name.append(res.name)
+        if 'CB' not in r_at_name:
+            cb_xyz.append((nan_type, nan_type, nan_type))
+        if 'CA' not in r_at_name:
+            raise KeyError('missing CA atom')
     
     name_base = [n[0] for n in name]
     at_charge = [CHARGE[n] for n in name_base]
