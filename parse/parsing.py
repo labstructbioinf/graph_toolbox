@@ -6,11 +6,15 @@ from typing import List, Union
 import torch as th
 import numpy as np
 import atomium
-import Bio.SeqUtils as bios
+try:
+    import Bio.SeqUtils as bios
+    protein_letters_3to1 = bios.IUPACData.protein_letters_3to1_extended
+    protein_letters_3to1 = {k.upper() : v for k,v in protein_letters_3to1.items()}
+except ImportError:
+    pass
 from scipy.spatial import distance_matrix
 
-protein_letters_3to1 = bios.IUPACData.protein_letters_3to1_extended
-protein_letters_3to1 = {k.upper() : v for k,v in protein_letters_3to1.items()}
+
 protein_letters = 'ACDEFGHIKLMNPQRSTVWY' + 'X'
 residue_to_num_dict = {res : num for num, res in enumerate(protein_letters)}
 map_residue = lambda res : residue_to_num_dict[res.code]
@@ -34,6 +38,13 @@ def get_ss_label(residue):
     else:
         return 'C'
 
+def _is_handle_valid(handle: Union[str, atomium.structures.Model]):
+    if isinstance(handle, str):
+        if not os.path.isfile(handle):
+            raise FileNotFoundError(f'file {handle} missing')
+        else:
+            handle = atomium.open(handle).model
+    return handle
     
 get_CA_xyz = partial(get_atom_xyz, atom_name='CA')
 def parse_graph_data(path, chain):

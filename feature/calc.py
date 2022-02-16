@@ -46,8 +46,8 @@ def read_struct(pdb_loc: Union[str, atomium.structures.Model],
     else: 
         if t < 5:
             print('dumb threshold')
-    
-    data = data.chain(chain)
+    if chain is not None:
+        data = data.chain(chain)
     atoms, name = [], []
     ca_xyz, cb_xyz = [], []
     residues, residues_name = [], []
@@ -73,18 +73,18 @@ def read_struct(pdb_loc: Union[str, atomium.structures.Model],
             cb_xyz.append((nan_type, nan_type, nan_type))
         if 'CA' not in r_at_name:
             raise KeyError('missing CA atom')
-    
+    # assign parameters to atoms
     name_base = [n[0] for n in name]
     at_charge = [CHARGE[n] for n in name_base]
     at_vdw = [SIGMA[n] for n in name_base]
     atom_arr = [atom_id[n] for n in name_base]
     at_eps = [EPSILON[n] for n in name_base]
-    
+    # convert to tensors
     res_id = th.LongTensor(residues)
     res_xyz = th.FloatTensor(ca_xyz)
     res_dist = th.cdist(res_xyz, res_xyz)
     res_cb = th.FloatTensor(cb_xyz)
-
+    # check variuos atom/residue types
     is_res_hf = [True if r in HYDROPHOBIC else False for r in residues_name]
     is_at_hb_a = [True if r in HYDROGEN_ACCEPTOR else False for r in name]
     is_at_hb_d = [True if r in HYDROGEN_DONOR else False for r in name]
@@ -149,7 +149,7 @@ def read_struct(pdb_loc: Union[str, atomium.structures.Model],
     for i in range(len(res_at_num)):
         efeat_list.extend(list(first_dim_split[i].split(res_at_num, 1)))
     u, v = th.where(res_dist < t)
-    uv = th.where(res_dist.ravel() < t)[0]
+    uv = th.where(res_dist < t)[0]
     feats_at = th.cat([efeat_list[e].sum((0,1), keepdim=True) for e in uv], dim=0)
     efeats = th.zeros_like(res_dist)
     # gather residue level feature, such as edge criteria
