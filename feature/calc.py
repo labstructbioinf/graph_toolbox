@@ -22,13 +22,13 @@ CLIP_MAX = th.FloatTensor([1,1,1,1,1,1,10,10,10,10,1,1,1,1,1,1])
 CLIP_MIN = th.FloatTensor([0,0,0,0,0,0,-10,-10,-10,1e-20,0,0,0,0,0,0])
 
 
-def read_struct(pdb_loc: Union[str, atomium.structures.Model],
+def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
                 chain: str,
                 t: int) -> Tuple[th.Tensor]:
     '''
     params:
-        pdb_loc (str, atomium.Model) 
-        chain (str) one letter pdb code
+        pdb_loc (str, set, atomium.Model) path to structure, atomium selection 
+        chain (str) one letter pdb code 
         t (int) contact distance threshold
     params:
         pdb_loc (str or atomium.model)
@@ -36,11 +36,13 @@ def read_struct(pdb_loc: Union[str, atomium.structures.Model],
     return u, v for feats
     '''
     if isinstance(pdb_loc, str):
-        data = atomium.open(pdb_loc).model
+        data = atomium.open(pdb_loc).model.residues()
     elif isinstance(pdb_loc, atomium.structures.Model):
+        data = pdb_loc.residues()
+    elif isinstance(pdb_loc, list):
         data = pdb_loc
     else:
-        raise KeyError('wrong pdb_loc')
+        raise KeyError(f'wrong pdb_loc type {type(pdb_loc)}')
     if not isinstance(t, (int, float)):
         raise ValueError(f'threshold must be number, given: {type(t)}')
     else: 
@@ -53,7 +55,7 @@ def read_struct(pdb_loc: Union[str, atomium.structures.Model],
     residues, residues_name = [], []
     is_side_chain = []
     res_at_num = []
-    for i, res in enumerate(data.residues()):
+    for i, res in enumerate(data):
         r_at_name = [r.name for r in res.atoms()]
         res_at_num.append(len(r_at_name))
         for atom in res.atoms():
@@ -153,7 +155,10 @@ def read_struct(pdb_loc: Union[str, atomium.structures.Model],
     feats_at = th.cat([efeat_list[e].sum((0,1), keepdim=True) for e in uv], dim=0)
     efeats = th.zeros_like(res_dist)
     # gather residue level feature, such as edge criteria
-    cb1 = th.linalg.norm(res_cb - res_xyz, dim=1, keepdim=True)
+    if hasattr(th, 'linalg'):
+        cb1 = th.linalg.norm(res_cb - res_xyz, dim=1, keepdim=True)
+    else:
+        cb1 = th.norm(res_cb - res_xyz, dim=1, keepdim=True)
     cb_dist = th.cdist(res_cb, res_cb)
     cb2 = cb1.clone().swapdims(0, 1)
     tn_cb12 = cb1 / (cb2 + 1e-5)

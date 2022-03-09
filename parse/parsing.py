@@ -18,8 +18,10 @@ from scipy.spatial import distance_matrix
 protein_letters = 'ACDEFGHIKLMNPQRSTVWY' + 'X'
 residue_to_num_dict = {res : num for num, res in enumerate(protein_letters)}
 map_residue = lambda res : residue_to_num_dict[res.code]
-
 protein_struct = namedtuple('protein_struct', ['path', 'pdb_chain', 'chain', 'xyz', 'seq', 'ss', 'pdb_list'])
+
+
+
 
 def get_atom_xyz(residue, atom_name):
     for a in residue.atoms():
