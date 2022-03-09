@@ -14,6 +14,10 @@ read XYZ coordinates, sequence and optionally secondary structure
 ```python
 parse_xyz(path: str, chain: str, get_pdb_ss:bool=False)-> th.FloatTensor, List[str]
 ```
+select residues from structure
+```python
+atomium_select(structure: atomium.structures.Model, chain: str, pdb_list: list) -> List[atomium.structures.Residue]
+```
 
 ## plot
 ```python

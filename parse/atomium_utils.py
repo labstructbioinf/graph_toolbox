@@ -1,9 +1,13 @@
+from typing import List
+
 import atomium
 
 
-def atomium_select(structure: atomium.structures.Model, chain: str, pdb_list: list):
+def atomium_select(structure: atomium.structures.Model,
+                   chain: str,
+                   pdb_list: list) -> List[atomium.structures.Residue]:
     '''
-    select subset of residues from atomium.model
+    select subset of residues given by `pdb_list` from atomium.model object
     return: list[residues]
     '''
     pdb_id_list = [f'{chain}.{pdb_id}' for pdb_id in pdb_list]
@@ -15,11 +19,10 @@ def atomium_select(structure: atomium.structures.Model, chain: str, pdb_list: li
             print(f'pdb_list: {pdb_list}')
             print('id\'s in structure', structure.residues())
             raise KeyError(f'residue is missing for pdbid {pdbid}')
-            
     return residues
 
 
-def atomium_chain_pdb_list(structure: atomium.structures.Model):
+def atomium_chain_pdb_list(structure: atomium.structures.Model) -> List[str]:
     '''
     return structure residue pdb id's
     return list[str]
