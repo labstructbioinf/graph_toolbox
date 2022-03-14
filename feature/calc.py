@@ -188,7 +188,10 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     return u, v, feats_all
 
 
-def calc_named(pdb_loc: str, chain, t) -> pd.DataFrame:
+def calc_named(pdb_loc: str, chain, t: int = 9) -> pd.DataFrame:
+    '''
+    calculate structural features as dataframe
+    '''
     name_i = ['disulfide', 'hydrophobic', 'cation_pi', 'arg_arg', 'salt_bridge', 'hbond']
     name_i += ['c', 'lj', 'e']
     name_i += ['cbcb', 'dist', 'ca_vs_cb', 'self', 'is_seq', 'is_seq_not', 'is_struct']
