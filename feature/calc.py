@@ -2,6 +2,7 @@
 from typing import Union, Tuple
 
 import atomium
+import pandas as pd
 import torch as th
 from .params import (HYDROPHOBIC,
                      AROMATIC,
@@ -187,10 +188,13 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     return u, v, feats_all
 
 
-def calc_named(pdb_loc, chain, t):
+def calc_named(pdb_loc: str, chain, t) -> pd.DataFrame:
     name_i = ['disulfide', 'hydrophobic', 'cation_pi', 'arg_arg', 'salt_bridge', 'hbond']
     name_i += ['c', 'lj', 'e']
     name_i += ['cbcb', 'dist', 'ca_vs_cb', 'self', 'is_seq', 'is_seq_not', 'is_struct']
-    _, _, feats = read_struct(pdb_loc, chain, t)
-    return feats, name_i
+    u, v, feats = read_struct(pdb_loc, chain, t)
+    dataframe = pd.DataFrame(data=feats.numpy(), columns=name_i)
+    dataframe['res1'] = u.numpy()
+    dataframe['res2'] = v.numpy()
+    return dataframe
 
