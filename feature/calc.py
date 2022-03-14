@@ -1,6 +1,8 @@
 '''script for calculating residue - residue interactions'''
 from typing import Union, Tuple
 
+import sys
+sys.path.append('..')
 import atomium
 import pandas as pd
 import torch as th
@@ -15,6 +17,8 @@ from .params import (HYDROPHOBIC,
                     HYDROGEN_ACCEPTOR,
                     HYDROGEN_DONOR)
 
+from parse import atomium_select, atomium_chain_pdb_list
+
 
 nan_type = float('nan')
 atom_id = {ch : i for i, ch in enumerate(CHARGE.keys())}
@@ -24,16 +28,13 @@ CLIP_MIN = th.FloatTensor([0,0,0,0,0,0,-10,-10,-10,1e-20,0,0,0,0,0,0])
 
 
 def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
-                chain: str,
-                t: int) -> Tuple[th.Tensor]:
+                chain: Union[str, None],
+                t: float) -> Tuple[th.Tensor]:
     '''
     params:
-        pdb_loc (str, set, atomium.Model) path to structure, atomium selection 
-        chain (str) one letter pdb code 
-        t (int) contact distance threshold
-    params:
-        pdb_loc (str or atomium.model)
-        t (float) residue-residue distance criteria
+        pdb_loc (str, set, atomium.Model): path to structure, atomium selection 
+        chain (str): one letter pdb code 
+        t (float): contact distance threshold
     return u, v for feats
     '''
     if isinstance(pdb_loc, str):
@@ -194,8 +195,11 @@ def calc_named(pdb_loc: str, chain, t: int = 9) -> pd.DataFrame:
     '''
     name_i = ['disulfide', 'hydrophobic', 'cation_pi', 'arg_arg', 'salt_bridge', 'hbond']
     name_i += ['c', 'lj', 'e']
-    name_i += ['cbcb', 'dist', 'ca_vs_cb', 'self', 'is_seq', 'is_seq_not', 'is_struct']
-    u, v, feats = read_struct(pdb_loc, chain, t)
+    name_i += ['cbcb', '1/caca', 'ca_vs_cb', 'self', 'is_seq', 'is_seq_not', 'is_struct']
+    structure = atomium.open(pdb_loc).model
+    pdb_ids = atomium_chain_pdb_list(structure, raw_id=True)
+    residues = atomium_select(structure, None, pdb_ids)
+    u, v, feats = read_struct(residues, chain, t)
     dataframe = pd.DataFrame(data=feats.numpy(), columns=name_i)
     dataframe['res1'] = u.numpy()
     dataframe['res2'] = v.numpy()
