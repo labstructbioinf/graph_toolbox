@@ -16,8 +16,10 @@ from .params import (HYDROPHOBIC,
                      EPSILON,
                     HYDROGEN_ACCEPTOR,
                     HYDROGEN_DONOR)
-
-from parse import atomium_select, atomium_chain_pdb_list
+try:
+    from parse import atomium_select, atomium_chain_pdb_list
+except:
+    pass
 
 
 nan_type = float('nan')

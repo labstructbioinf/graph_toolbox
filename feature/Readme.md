@@ -30,6 +30,7 @@
 * Foldx print networks:  http://foldxsuite.crg.eu/command/PrintNetworks
 * Graphein: https://graphein.ai/modules/graphein.protein.html#edges
 * RIP-MD paper
+* PLIP https://github.com/pharmai/plip/blob/master/DOCUMENTATION.md
 
 ## selected criteria
 **disulfde**   $$dist(Sulfur, Sulfur) < 2.2 A$$
@@ -38,3 +39,9 @@
 **salt bridges** $$dist(NH/NZ, OE/OD)$$ for ARG/LYS and ARG/GLU respectively
 **arg-arg** $$dist(\text{guanidine}_i, \text{guanidine}_j) < 5 A$$
 **cation $$\pi$$** $$dist(\text{aromatic ring}_i, \text{aromatic ring}_j)$$ i in Trp, Tyr, Phe (His?)
+
+
+## resources
+#### RIP-MD criteria
+![RIP-MD](/img/RIP_MD_eq_table.png)
+
