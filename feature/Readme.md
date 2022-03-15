@@ -43,5 +43,5 @@
 
 ## resources
 #### RIP-MD criteria
-![RIP-MD](/img/RIP_MD_eq_table.png)
+![RIP-MD](img/RIP_MD_eq_table.png)
 
