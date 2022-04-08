@@ -1,3 +1,4 @@
+BACKBONE = {"CA", "C", "N", "O"}
 HYDROPHOBIC = {'ALA', 'VAL', 'LEU', 'ILE', 'MET', 'PHE', 'TRP', 'RPO', 'TYR'}
 AROMATIC = {'TRP', 'TYR', 'PHE'}
 CATION_PI = {'CG', 'CD', 'CE', 'CZ'}
