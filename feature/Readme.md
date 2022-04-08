@@ -31,6 +31,7 @@
 * Graphein: https://graphein.ai/modules/graphein.protein.html#edges
 * RIP-MD paper
 * PLIP https://github.com/pharmai/plip/blob/master/DOCUMENTATION.md
+* RING 2.0: https://academic.oup.com/nar/article/44/W1/W367/2499329
 
 ## selected criteria
 **disulfde**   $$dist(Sulfur, Sulfur) < 2.2 A$$
@@ -45,3 +46,7 @@
 #### RIP-MD criteria
 ![RIP-MD](img/RIP_MD_eq_table.png)
 
+
+## remarks
+- more then two residues may take part in ionic interactions: https://pubmed.ncbi.nlm.nih.gov/21654080/
+- "It has been shown that the influence of each residue over the surrounding medium extends effectively only up to 8 Å" : https://www.sciencedirect.com/science/article/pii/S0079610703000816

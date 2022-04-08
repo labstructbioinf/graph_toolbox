@@ -1,9 +1,12 @@
 import os
+import warnings
 from functools import partial
 from collections import namedtuple
 from typing import List, Union
-
-import torch as th
+try:
+    import torch as th
+except ImportError:
+    warnings.warn('missing pytorch some functionalities with be broken')
 import numpy as np
 import atomium
 try:
