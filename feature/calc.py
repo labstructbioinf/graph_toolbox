@@ -20,9 +20,10 @@ from .params import (BACKBONE,
                     VDW_RADIUS,
                     VDW_ATOMS)
 try:
-    from parse import atomium_select, atomium_chain_pdb_list
-except:
-    pass
+    from .. parse import atomium_select, atomium_chain_pdb_list
+    from .. parse import read_pdb_full
+except ImportError as e:
+    print(e)
 
 
 nan_type = float('nan')
@@ -154,7 +155,6 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     at_dist = th.cdist(at_xyz, at_xyz)
     at_id = th.LongTensor(at_eps)
     sigma = th.FloatTensor(at_vdw)
-    epsilon = th.FloatTensor(at_eps)
     at_is_side = th.BoolTensor(is_side_chain)
     # hbonds acceptor donors
     at_is_hba = th.BoolTensor(is_at_hb_a) | th.BoolTensor(is_at_hb_ac)
@@ -274,6 +274,7 @@ def calc_struct_properties(resname: List[str],
     # hydrogen bonds
     is_at_hb_a = th.zeros(num_atoms, dtype=th.bool)
     is_at_hb_d = th.zeros(num_atoms, dtype=th.bool)
+    is_sulphur = [True if at.startswith('S') else False for at in atomname]
     is_at_hb_ac = [True if at.startswith("C") else False for at in atomname]
     is_at_hb_ad = [True if at.startswith('NH') else False for at in atomname]
     is_res_ar = is_atom_in_group(resname, AROMATIC, num_atoms)
@@ -300,6 +301,7 @@ def calc_struct_properties(resname: List[str],
             if at in HYDROGEN_DONOR[res]:
                 is_at_hb_a[i] = True
     is_at_vdw  = is_atom_in_group(atombase, {'C', 'S'}, num_atoms)
+    is_at_sulphur = th.BoolTensor(is_sulphur)
     is_at_hb_ac = th.BoolTensor(is_at_hb_ac)
     is_at_hb_ad = th.BoolTensor(is_at_hb_ad)
     # hbonds acceptor donors
@@ -307,22 +309,14 @@ def calc_struct_properties(resname: List[str],
     at_is_hbd = is_at_hb_d | is_at_hb_ad
     #vdw
     at_is_vdw = is_at_vdw | is_at_vdw_other
-    at_dist_xyz = at_xyz[:, None] - at_xyz[None, :]
-    at_dist_inv = 1/(at_dist + 1e-6)
-    # set inverse of the atom self distance to zero to avoid nan/inf when summing
-    at_dist_inv.fill_diagonal_(0) 
     atat_charge = th.FloatTensor(at_charge)
     atat_charge = atat_charge.view(-1, 1) * atat_charge.view(1, -1)
     sigma_coeff = (sigma.view(-1, 1) + sigma.view(1, -1))/2
     sigma_radii = (sigma.view(-1, 1) + sigma.view(1, -1))
     epsilon = th.sqrt(epsilon.view(-1, 1) * epsilon.view(1, -1))
-    
-    lj_r = sigma_coeff*at_dist_inv * (at_dist < 5)
-    lj6 = -6*th.pow(lj_r, 7) 
-    lj12 = -12*th.pow(lj_r, 13)
     # binary interactions
-    disulfde = (at_id == 4) & (at_dist < 2.2)
-    hydrophobic = (at_dist < 5.0) & (at_is_side == False) & is_res_hf
+    disulfde = is_at_sulphur & (at_dist < 3)
+    hydrophobic = (at_dist < 5.0) & ~at_is_side & is_res_hf
     cation_pi = (at_dist < 6) & is_res_cpi
     arg_arg = (at_dist < 5.0) & is_res_arg
     vdw = ((at_dist - sigma_radii) < 0.5) & at_is_vdw
@@ -341,15 +335,6 @@ def calc_struct_properties(resname: List[str],
                    hbond.unsqueeze(2),
                    vdw.unsqueeze(2)), dim=2)
     feats = feats.float()
-    cfactor = (1.0/3.14*EPS) * atat_charge * at_dist_inv.pow(2)
-    coulomb_force =  cfactor[:, :, None] * at_dist_xyz
-    ljfactor = epsilon * (lj12 - lj6)
-    lj_force = ljfactor[:, :, None]*at_dist_xyz
-    #energy_sum = coulomb_energy + lenard_jones_energy
-    feats = th.cat((feats, 
-                    coulomb_force,
-                   lj_force),
-                   dim=2)
     # change feature resolution
     # from atomic level to residue level
     efeat_list = list()
@@ -402,7 +387,15 @@ def calc_named(pdb_loc: str, chain, t: float = 9) -> pd.DataFrame:
     dataframe = pd.DataFrame(data=feats.numpy(), columns=FEATNAME)
     dataframe['res1'] = u.numpy()
     dataframe['res2'] = v.numpy()
+    return dataframe
 
+def calculate_interactions(path_pdb: str, t: float = 9) -> pd.DataFrame:
+
+    structdata = read_pdb_full(path_pdb)
+    u, v, feats = calc_struct_properties(*structdata, t=t)
+    dataframe = pd.DataFrame(data=feats.numpy(), columns=FEATNAME)
+    dataframe['res1'] = u.numpy()
+    dataframe['res2'] = v.numpy()
     return dataframe
 
 def edge_embedding_to_3d_tensor(u,v,emb):
