@@ -113,34 +113,56 @@ def parse_sequence(path, pdb_chain):
     return sequence
 
 
-def parse_xyz(path: Union[str, atomium.structures.Model],
+def parse_xyz(handle: Union[str, atomium.structures.Model],
               chain: Union[str, None] = None,
-              get_pdb_ss:bool=False)->(th.FloatTensor, List[str]):
+              get_pdb_ss:bool = False):
     '''
-    params:
+    read structure and return its xyz coordinates
+    if handle posses more then one model then lists are returned
+    Params:
+        path (str or atomium model)
         chain (str, None) default None if str read chain if None read all
     return:
-        ca_xyz (torch.Tensor), sequence (list)
+        ca_xyz (torch.Tensor or List[torch.Tensor])
+        sequence (list or List[str])
         
     '''
-    if isinstance(path, str):
-        if not os.path.isfile(path):
-            raise KeyError(f'path: {path} doesn\'t exist')
+    # validate input arguments
+    if isinstance(handle, str):
+        if not os.path.isfile(handle):
+            raise KeyError(f'path: {handle} doesn\'t exist')
+        # read structure from file
         else:
-            data = atomium.open(path).model
-            chain = data.chain(chain) if chain is not None else data
-    elif isinstance(path, atomium.structures.Model):
-        chain = path.chain(chain) if chain is not None else path
+            data = atomium.open(handle).models
+    elif isinstance(handle, atomium.structures.Model):
+        data = [handle]
     else:
-        raise KeyError(f'invalid path arg type {path}')
-    sequence = list(map(lambda x: x.code, chain.residues()))
-    ca_xyz = list(map(get_CA_xyz, chain.residues()))
-    ca_xyz = th.FloatTensor(ca_xyz)
+        raise KeyError(f'invalid path argument type for path: {handle}')
+
+    xyz_list = list()
+    seq_list = list()
+    sec_list = list()
+    for model in data:
+        if chain is not None:
+            model = model.chain(chain)
+        # read content
+        sequence = list(map(lambda x: x.code, model.residues()))
+        ca_xyz = list(map(get_CA_xyz, model.residues()))
+        ca_xyz = th.FloatTensor(ca_xyz)
+        seq_list.append(sequence)
+        xyz_list.append(ca_xyz)
+        if get_pdb_ss:
+            secondary = list(map(get_ss_label, model.residues()))
     if get_pdb_ss:
-        secondary = list(map(get_ss_label, chain.residues()))
-        return ca_xyz, sequence, secondary
+        if len(data) == 1:
+            return xyz_list.pop(), seq_list.pop(), sec_list.pop()
+        else:
+            return xyz_list, seq_list, sec_list
     else:
-        return ca_xyz, sequence
+        if len(data) == 1:
+            return xyz_list.pop(), seq_list.pop()
+        else:
+            return xyz_list, seq_list
 
 
 def parse_pdb_indices(path, chain):
