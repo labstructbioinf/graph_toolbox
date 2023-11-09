@@ -4,8 +4,8 @@
 |interactions|     Foldx | graphein | RIP-MD | Kamil | interaction type |
 |-------|-----------|----------|--------|-------|-----------------------|
 |**aromatic**|        | [x]        | [x] | [x]   |                      |
-|**hydrogen**| [x]     |     [x]    | [x] | |    | binary
-|**hydrophobic**|      |   [x]     | [x]   |  |   |  binary
+|**hydrogen**| [x]     |     [x]    | [x] | |  binary  | 
+|**hydrophobic**|      |   [x]     | [x]   |  |  binary |  
 |**volumetric**|  [x]  |          | | |  |
 |**vdW**|              | [x]      | [x] | |  binary |
 |**charge**| [x]       |           | [x] | [x] | |
