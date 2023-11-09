@@ -4,7 +4,7 @@
 |interactions|     Foldx | graphein | RIP-MD | Kamil | interaction type |
 |-------|-----------|----------|--------|-------|-----------------------|
 |**aromatic**|        | [x]        | [x] | [x]   |                      |
-|**hydrogen**| [x]     |     [x]    | [x] | |  binary  | 
+|**hydrogen**| [x]     |     [x]    | [x] | [x] |  binary  | 
 |**hydrophobic**|      |   [x]     | [x]   |  |  binary |  
 |**volumetric**|  [x]  |          | | |  |
 |**vdW**|              | [x]      | [x] | |  binary |
@@ -16,7 +16,7 @@
 |distance|      |   [x]         |  [x] | [x] | |
 |**cation pi**|      |    [x]        | [x] | [x] | binary |
 |**ionic**|      |        [x]    | | |
-|**salt bridges**|   |    [x]         | [x] | [x] | |
+|**salt bridges**|   |    [x]         | [x] | [x] | binary |
 |stacking pi |    |     [x]         | | |
 |delaunay     |    |        [x]     | | |
 |**arg - arg**|       |            |  [x] | [x] | binary |
