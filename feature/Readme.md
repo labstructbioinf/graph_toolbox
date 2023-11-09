@@ -1,25 +1,25 @@
 
 
 ## residue-residue interactions available
-|interactions|     Foldx | graphein | RIP-MD | Kamil |
-|-------|-----------|----------|--------|-------|
-|**aromatic**|        | [x]        | [x] | [x]   |
-|**hydrogen**| [x]     |     [x]    | [x] | |
-|**hydrophobic**|      |   [x]     | [x]   |  |
-|**volumetric**|  [x]  |          | | | 
+|interactions|     Foldx | graphein | RIP-MD | Kamil | interaction type |
+|-------|-----------|----------|--------|-------|-----------------------|
+|**aromatic**|        | [x]        | [x] | [x]   |                      |
+|**hydrogen**| [x]     |     [x]    | [x] | |    |
+|**hydrophobic**|      |   [x]     | [x]   |  |   |
+|**volumetric**|  [x]  |          | | |  |
 |**vdW**|              | [x]      | [x] | | 
-|**charge**| [x]       |           | [x] | [x] |
-|contact| [x]      |           | [x] | [x] |
-|**disulfide**| [x]    |  [x]       |  [x] | [x] |
-|partcov| [x]      |          | |
-|water| [x]        |           | |
-|distance|      |   [x]         |  [x] | [x] | 
-|**cation pi**|      |    [x]        | [x] | [x] |
-|**ionic**|      |        [x]    | |
-|**salt bridges**|   |    [x]         | [x] | [x] |
-|stacking pi |    |     [x]         | | 
-|delaunay     |    |        [x]     | |
-|**arg - arg**|       |            |  [x] | [x] 
+|**charge**| [x]       |           | [x] | [x] | |
+|contact| [x]      |           | [x] | [x] | |
+|**disulfide**| [x]    |  [x]       |  [x] | [x] | |
+|partcov| [x]      |          | | |
+|water| [x]        |           | | |
+|distance|      |   [x]         |  [x] | [x] | |
+|**cation pi**|      |    [x]        | [x] | [x] | |
+|**ionic**|      |        [x]    | | |
+|**salt bridges**|   |    [x]         | [x] | [x] | |
+|stacking pi |    |     [x]         | | |
+|delaunay     |    |        [x]     | | |
+|**arg - arg**|       |            |  [x] | [x] |
 --------------------------------------
 
 
