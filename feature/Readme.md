@@ -10,7 +10,7 @@
 |**vdW**|              | [x]      | [x] | |  binary |
 |**charge**| [x]       |           | [x] | [x] | |
 |contact| [x]      |           | [x] | [x] | |
-|**disulfide**| [x]    |  [x]       |  [x] | [x] | |
+|**disulfide**| [x]    |  [x]       |  [x] | [x] | binary |
 |partcov| [x]      |          | | |
 |water| [x]        |           | | |
 |distance|      |   [x]         |  [x] | [x] | |
