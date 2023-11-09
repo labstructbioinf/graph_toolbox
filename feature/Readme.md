@@ -4,22 +4,22 @@
 |interactions|     Foldx | graphein | RIP-MD | Kamil | interaction type |
 |-------|-----------|----------|--------|-------|-----------------------|
 |**aromatic**|        | [x]        | [x] | [x]   |                      |
-|**hydrogen**| [x]     |     [x]    | [x] | |    |
-|**hydrophobic**|      |   [x]     | [x]   |  |   |
+|**hydrogen**| [x]     |     [x]    | [x] | |    | binary
+|**hydrophobic**|      |   [x]     | [x]   |  |   |  binary
 |**volumetric**|  [x]  |          | | |  |
-|**vdW**|              | [x]      | [x] | | 
+|**vdW**|              | [x]      | [x] | |  binary |
 |**charge**| [x]       |           | [x] | [x] | |
 |contact| [x]      |           | [x] | [x] | |
 |**disulfide**| [x]    |  [x]       |  [x] | [x] | |
 |partcov| [x]      |          | | |
 |water| [x]        |           | | |
 |distance|      |   [x]         |  [x] | [x] | |
-|**cation pi**|      |    [x]        | [x] | [x] | |
+|**cation pi**|      |    [x]        | [x] | [x] | binary |
 |**ionic**|      |        [x]    | | |
 |**salt bridges**|   |    [x]         | [x] | [x] | |
 |stacking pi |    |     [x]         | | |
 |delaunay     |    |        [x]     | | |
-|**arg - arg**|       |            |  [x] | [x] |
+|**arg - arg**|       |            |  [x] | [x] | binary |
 --------------------------------------
 
 
