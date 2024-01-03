@@ -6,6 +6,7 @@ sys.path.append('..')
 import atomium
 import pandas as pd
 import torch as th
+from biopandas.pdb import PandasPdb
 from .params import (BACKBONE,
                     HYDROPHOBIC,
                      AROMATIC,
@@ -25,7 +26,7 @@ try:
 except ImportError as e:
     print(e)
 
-
+side_chain_atom_names = ['CA', 'C', 'N', 'O']
 nan_type = float('nan')
 atom_id = {ch : i for i, ch in enumerate(CHARGE.keys())}
 EPS = th.Tensor([78*1e-2]) # unit Farad / angsterm
@@ -68,11 +69,11 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     return u, v for feats
     '''
     if isinstance(pdb_loc, str):
-        data = atomium.open(pdb_loc).model.residues()
-    elif isinstance(pdb_loc, atomium.structures.Model):
-        data = pdb_loc.residues()
-    elif isinstance(pdb_loc, list):
-        data = pdb_loc
+        data = PandasPdb().read_pdb(pdb_loc).df['ATOM']
+    # elif isinstance(pdb_loc, atomium.structures.Model):
+    #     data = pdb_loc.residues()
+    # elif isinstance(pdb_loc, list):
+    #     data = pdb_loc
     else:
         raise KeyError(f'wrong pdb_loc type {type(pdb_loc)}')
     if not isinstance(t, (int, float, type(None))):
@@ -81,28 +82,32 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
         if isinstance(t, (int, float)) and t < 5:
             print('dumb threshold')
     if chain is not None:
-        data = data.chain(chain)
+        data = data[data['chain_id'] == chain]
+    minlength = data['residue_number'].min()
+    chainlength = data['residue_number'].max()
     atoms, name = [], []
     ca_xyz, cb_xyz = [], []
     residues, residues_name = [], []
     is_side_chain = []
     res_at_num = []
-    for i, res in enumerate(data):
-        r_at_name = [r.name for r in res.atoms()]
+    for resid in range(minlength, chainlength+1):
+        res = data[data['residue_number'] == resid]
+        r_at_name = res['atom_name'].tolist()
         res_at_num.append(len(r_at_name))
-        for atom in res.atoms():
-            n = atom.name
+        for i, atom in res.iterrows():
+            # print(atom)
+            n = atom['atom_name']
             if n == 'CA':
-                ca_xyz.append(atom.location)
+                ca_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
             elif n == 'CB':
-                cb_xyz.append(atom.location)
+                cb_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
             elif len(n) == 3:
                 n = n[:2]
             name.append(n)
-            is_side_chain.append(atom.is_side_chain)
-            atoms.append(atom.location)
-            residues.append(i)
-            residues_name.append(res.name)
+            is_side_chain.append(True if n in side_chain_atom_names else False)
+            atoms.append((atom.x_coord, atom.y_coord, atom.z_coord))
+            residues.append(atom['residue_number'])
+            residues_name.append(res['residue_name'].tolist()[0])
         if 'CB' not in r_at_name:
             cb_xyz.append((nan_type, nan_type, nan_type))
         if 'CA' not in r_at_name:
@@ -119,6 +124,8 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     res_xyz = th.FloatTensor(ca_xyz)
     res_dist = th.cdist(res_xyz, res_xyz)
     res_cb = th.FloatTensor(cb_xyz)
+    print(res_xyz.shape, res_dist.shape, res_cb.shape, res_id.shape)
+
     # check variuos atom/residue types
     # hydrophobic
     is_res_hf = [True if r in HYDROPHOBIC else False for r in residues_name]
@@ -219,13 +226,15 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     cb_dist = th.cdist(res_cb, res_cb)
     inv_ca12 = 1/(res_dist + 1e-5)
     inv_ca12.fill_diagonal_(0)
-    res_id_short = th.arange(0, res_id.max()+1, 1)
+    res_id_short = th.arange(0, len(set(residues)), 1)
     is_seq = th.abs(res_id_short.unsqueeze(0) - res_id_short.unsqueeze(1))
     is_self = is_seq == 0
     is_seq_0 = is_seq == 1
     is_seq_1 = is_seq > 5
     is_struct_0 = is_seq > 1
     is_caca_cbcb = cb_dist < res_dist
+    # print(inv_ca12.shape, is_caca_cbcb.shape, is_self.shape, is_seq_0.shape, is_seq_1.shape, is_struct_0.shape)
+
     feats_res = th.cat((inv_ca12.unsqueeze(2),
                         is_caca_cbcb.unsqueeze(2),
                         is_self.unsqueeze(2),
