@@ -58,7 +58,7 @@ def residue_atoms_criteria(iterator, criteria_dict : dict, storage: list):
                 storage[i] = True
     return storage
 
-def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
+def read_struct(pdb_loc: str,
                 chain: Union[str, None],
                 t: Union[float, None]) -> Tuple[th.Tensor]:
     '''
@@ -70,10 +70,6 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     '''
     if isinstance(pdb_loc, str):
         data = PandasPdb().read_pdb(pdb_loc).df['ATOM']
-    # elif isinstance(pdb_loc, atomium.structures.Model):
-    #     data = pdb_loc.residues()
-    # elif isinstance(pdb_loc, list):
-    #     data = pdb_loc
     else:
         raise KeyError(f'wrong pdb_loc type {type(pdb_loc)}')
     if not isinstance(t, (int, float, type(None))):
@@ -90,12 +86,14 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     residues, residues_name = [], []
     is_side_chain = []
     res_at_num = []
+    skip_c = 0
     for resid in range(minlength, chainlength+1):
         res = data[data['residue_number'] == resid]
-        r_at_name = res['atom_name'].tolist()
-        res_at_num.append(len(r_at_name))
         for i, atom in res.iterrows():
-            # print(atom)
+            if atom.alt_loc in ['B','C','D']:
+                skip_c += 1
+                res = res[res.index != i]
+                continue
             n = atom['atom_name']
             if n == 'CA':
                 ca_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
@@ -108,12 +106,15 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
             atoms.append((atom.x_coord, atom.y_coord, atom.z_coord))
             residues.append(atom['residue_number'])
             residues_name.append(res['residue_name'].tolist()[0])
+        r_at_name = res['atom_name'].tolist()
+        res_at_num.append(len(r_at_name))
         if 'CB' not in r_at_name:
             cb_xyz.append((nan_type, nan_type, nan_type))
         if 'CA' not in r_at_name:
             raise KeyError('missing CA atom')
     # assign parameters to atoms
     num_atoms = len(name)
+    print('skipped: ', skip_c)
     name_base = [n[0] for n in name]
     at_charge = [CHARGE[n] for n in name_base]
     at_vdw = [SIGMA[n] for n in name_base]
@@ -124,7 +125,7 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     res_xyz = th.FloatTensor(ca_xyz)
     res_dist = th.cdist(res_xyz, res_xyz)
     res_cb = th.FloatTensor(cb_xyz)
-    print(res_xyz.shape, res_dist.shape, res_cb.shape, res_id.shape)
+    # print(minlength, chainlength)
 
     # check variuos atom/residue types
     # hydrophobic
@@ -233,8 +234,6 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     is_seq_1 = is_seq > 5
     is_struct_0 = is_seq > 1
     is_caca_cbcb = cb_dist < res_dist
-    # print(inv_ca12.shape, is_caca_cbcb.shape, is_self.shape, is_seq_0.shape, is_seq_1.shape, is_struct_0.shape)
-
     feats_res = th.cat((inv_ca12.unsqueeze(2),
                         is_caca_cbcb.unsqueeze(2),
                         is_self.unsqueeze(2),
@@ -244,6 +243,7 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     feats_res = feats_res[u,v]
     feats_all = th.cat((feats_at.float().squeeze(), feats_res), dim=-1)
     return u, v, feats_all
+
 
 
 def calc_struct_properties(resname: List[str],
