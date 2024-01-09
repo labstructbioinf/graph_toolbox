@@ -7,7 +7,7 @@ import atomium
 import pandas as pd
 import torch as th
 from biopandas.pdb import PandasPdb
-from .params import (BACKBONE,
+from params import (BACKBONE,
                     HYDROPHOBIC,
                      AROMATIC,
                      CATION_PI,
@@ -26,18 +26,45 @@ try:
 except ImportError as e:
     print(e)
 
-side_chain_atom_names = ['CA', 'C', 'N', 'O']
+aa_trans = {
+    'MSE': 'MET',  # Methionine Selenomethionine
+    'CYX': 'CYS',  # Cystine
+    'SEC': 'CYS',  # Selenocysteine
+    'PYL': 'LYS',  # Pyrrolysine
+    'ALM': 'ALA',  # Alanine with added methyl group
+    'CME': 'CYS',  # S,S-(2-hydroxyethyl)thiocysteine
+    'CSO': 'CYS',  # S-Hydroxycysteine
+    'OCS': 'CYS',  # Cysteic acid
+    'SEP': 'SER',  # Phosphoserine
+    'TPO': 'THR',  # Phosphothreonine
+    'PTR': 'TYR',  # Phosphotyrosine
+    # ...
+}
+
 nan_type = float('nan')
 atom_id = {ch : i for i, ch in enumerate(CHARGE.keys())}
 EPS = th.Tensor([78*1e-2]) # unit Farad / angsterm
 CLIP_MAX = th.FloatTensor([1,1,1,1,1,1,1,10,10,10,10,1,1,1,1,1,1])
 CLIP_MIN = th.FloatTensor([0,0,0,0,0,0,0,-10,-10,-10,1e-20,0,0,0,0,0,0])
+side_chain_atom_names = ['CA', 'C', 'N', 'O']
 
 FEATNAME = [
     'disulfide', 'hydrophobic', 'cation_pi', 'arg_arg', 'salt_bridge', 'hbond', 'vdw',
     #'cx','cy','cz', 'ljx', 'ljy', 'ljz',
     '1/caca', 'ca_vs_cb', 'self', 'is_seq', 'is_seq_not', 'is_struct'
 ]
+
+def fill_missing_part_by_index(missing_index: int,
+                               biopandas_df: str,
+                               chain: Union[str,None]) -> Union[PandasPdb.df, bool]:
+    hetdf = biopandas_df.df['HETATM'] if chain is None else biopandas_df.df['HETATM'].loc[biopandas_df.df['HETATM']['chain_id'] == chain]
+    missing_df = hetdf[hetdf['residue_number'] == missing_index]
+    if missing_df.empty:
+        raise KeyError(f"missing residue {missing_index} not found")
+    # convert miss to df.df['ATOM']
+    missing_df['record_name'] = 'ATOM'
+    missing_df['residue_name'] = missing_df['residue_name'].apply(lambda x: aa_trans[x] if x in aa_trans.keys() else x)
+    return missing_df
 
 def is_atom_in_group(atoms: List[str], group: set, size: int):
     arr = th.zeros(size, dtype=th.bool)
@@ -58,9 +85,11 @@ def residue_atoms_criteria(iterator, criteria_dict : dict, storage: list):
                 storage[i] = True
     return storage
 
-def read_struct(pdb_loc: str,
+def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
                 chain: Union[str, None],
-                t: Union[float, None]) -> Tuple[th.Tensor]:
+                t: Union[float, None],
+                indices_to_read: Union[list, None] = None
+                ) -> Tuple[th.Tensor]:
     '''
     params:
         pdb_loc (str, set, atomium.Model): path to structure, atomium selection 
@@ -69,7 +98,11 @@ def read_struct(pdb_loc: str,
     return u, v for feats
     '''
     if isinstance(pdb_loc, str):
-        data = PandasPdb().read_pdb(pdb_loc).df['ATOM']
+        data = PandasPdb().read_pdb(pdb_loc)#.df['ATOM']
+    # elif isinstance(pdb_loc, atomium.structures.Model):
+    #     data = pdb_loc.residues()
+    # elif isinstance(pdb_loc, list):
+    #     data = pdb_loc
     else:
         raise KeyError(f'wrong pdb_loc type {type(pdb_loc)}')
     if not isinstance(t, (int, float, type(None))):
@@ -78,9 +111,20 @@ def read_struct(pdb_loc: str,
         if isinstance(t, (int, float)) and t < 5:
             print('dumb threshold')
     if chain is not None:
-        data = data[data['chain_id'] == chain]
-    minlength = data['residue_number'].min()
-    chainlength = data['residue_number'].max()
+        data.df['ATOM'] = data.df['ATOM'].loc[data.df['ATOM']['chain_id'] == chain]
+    if indices_to_read is not None:
+        data.df['ATOM'] = data.df['ATOM'].loc[data.df['ATOM']['residue_number'].isin(indices_to_read)]
+    minlength = data.df['ATOM']['residue_number'].min()
+    chainlength = data.df['ATOM']['residue_number'].max()
+    theo_range = list(range(minlength, chainlength+1))
+    prac_range = data.df['ATOM']['residue_number'].tolist()
+    missing = list(set(theo_range) - set(prac_range))
+# fill missing residues
+    for missing_resid in missing:
+        try:
+            data.df['ATOM'] = pd.concat([data.df['ATOM'], fill_missing_part_by_index(missing_resid, data,chain)], ignore_index=True)
+        except KeyError:
+            print(f"missing residue: {missing_resid} cannot be filled")
     atoms, name = [], []
     ca_xyz, cb_xyz = [], []
     residues, residues_name = [], []
@@ -88,19 +132,26 @@ def read_struct(pdb_loc: str,
     res_at_num = []
     skip_c = 0
     for resid in range(minlength, chainlength+1):
-        res = data[data['residue_number'] == resid]
+        res = data.df['ATOM'][data.df['ATOM']['residue_number'] == resid]
         for i, atom in res.iterrows():
+            # print(atom.alt_loc)
             if atom.alt_loc in ['B','C','D']:
                 skip_c += 1
+                #  df = df.loc[~df.index.isin([i]), :]
+
                 res = res[res.index != i]
+                # if atom.alt_loc != 'A':
                 continue
             n = atom['atom_name']
+            # print(resid)
             if n == 'CA':
+                # print(f"Residue: {resid}, atom: {n}")
                 ca_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
             elif n == 'CB':
                 cb_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
             elif len(n) == 3:
                 n = n[:2]
+        
             name.append(n)
             is_side_chain.append(True if n in side_chain_atom_names else False)
             atoms.append((atom.x_coord, atom.y_coord, atom.z_coord))
@@ -109,12 +160,20 @@ def read_struct(pdb_loc: str,
         r_at_name = res['atom_name'].tolist()
         res_at_num.append(len(r_at_name))
         if 'CB' not in r_at_name:
+
+            # continue
             cb_xyz.append((nan_type, nan_type, nan_type))
         if 'CA' not in r_at_name:
-            raise KeyError('missing CA atom')
+            # continue
+            # raise KeyError('missing CA atom at residue: ', resid)
+            ca_xyz.append((nan_type, nan_type, nan_type))
     # assign parameters to atoms
     num_atoms = len(name)
     print('skipped: ', skip_c)
+
+    # print(len(ca_xyz))
+    # #CHECK for duplicates in ca_xyz
+    # print(len(set(ca_xyz)))
     name_base = [n[0] for n in name]
     at_charge = [CHARGE[n] for n in name_base]
     at_vdw = [SIGMA[n] for n in name_base]
@@ -234,6 +293,11 @@ def read_struct(pdb_loc: str,
     is_seq_1 = is_seq > 5
     is_struct_0 = is_seq > 1
     is_caca_cbcb = cb_dist < res_dist
+    # inv_ca12 = inv_ca12[(~th.isnan(inv_ca12).any(axis=1)) and (~th.isnan(inv_ca12).any(axis=0))] 
+    is_caca_cbcb = is_caca_cbcb[~th.isnan(is_caca_cbcb).any(axis=1)]
+    # print(data.residue_number.head(1), data.residue_number.tail(1))
+    # print(f" inv_ca12: {inv_ca12.shape}, is_caca_cbcb: {is_caca_cbcb.shape}, is_self: {is_self.shape}, is_seq_0: {is_seq_0.shape}, is_seq_1: {is_seq_1.shape}, is_struct_0: {is_struct_0.shape}")
+
     feats_res = th.cat((inv_ca12.unsqueeze(2),
                         is_caca_cbcb.unsqueeze(2),
                         is_self.unsqueeze(2),
@@ -243,7 +307,6 @@ def read_struct(pdb_loc: str,
     feats_res = feats_res[u,v]
     feats_all = th.cat((feats_at.float().squeeze(), feats_res), dim=-1)
     return u, v, feats_all
-
 
 
 def calc_struct_properties(resname: List[str],
