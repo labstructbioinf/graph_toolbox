@@ -1,3 +1,5 @@
+from typing import Dict
+
 BACKBONE = {"CA", "C", "N", "O"}
 HYDROPHOBIC = {'ALA', 'VAL', 'LEU', 'ILE', 'MET', 'PHE', 'TRP', 'RPO', 'TYR'}
 AROMATIC = {'TRP', 'TYR', 'PHE'}
@@ -62,3 +64,45 @@ HYDROGEN_DONOR = {
     'TRP' : {'NE1'},
     'TYR' : {'OH'}
 }
+
+
+SS_MAP_EXT : Dict[str, int] = {
+    'H' : 0,
+    'H2' : 0,
+    'B' : 1,
+    'G' : 2,
+    'I' : 3,
+    'T' : 4,
+    'S' : 5,
+    '-' : 6,
+    'C' : 6,
+    ' ' : 6,
+    'E1' : 7,
+    'E2' : 8,
+    '?' : 6,
+    'H1' : 9,
+    'H3' : 10
+}
+
+amino_acid_residues_extended_upper = [
+    'ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLU', 'GLN', 'GLY', 'HIS', 'ILE',
+    'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER', 'THR', 'TRP', 'TYR', 'VAL',
+    'MSE',  # asdasd
+    'SEC',  # Selenocysteine
+    'PYL',  # Pyrrolysine
+    'ORN',  # Ornithine
+    'CIT',  # Citrulline
+    'HYL',  # Hydroxylysine
+    'ABA',  # 4-aminobutyric acid
+    'AAD',  # 2-Aminoadipic acid
+    'AIB',  # α-Aminoisobutyric acid
+    'NLE',  # Norleucine
+]
+
+ACIDS_ORDER : str = amino_acid_residues_extended_upper
+
+ACIDS_MAP_DEF = {acid : nb for  nb, acid in enumerate(ACIDS_ORDER)}
+ACIDS_MAP_R = {nb : acid for  nb, acid in enumerate(ACIDS_ORDER)}
+
+NUM_SS_LETTERS = len(set(SS_MAP_EXT.values()))
+NUM_RES_LETTERS = len(set(ACIDS_ORDER))

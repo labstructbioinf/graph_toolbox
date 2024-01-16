@@ -127,6 +127,7 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     atoms, name = [], []
     ca_xyz, cb_xyz = [], []
     residues, residues_name = [], []
+    res_per_res = list()
     is_side_chain = []
     res_at_num = []
     skip_c = 0
@@ -136,6 +137,7 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
         num_atoms = residue.shape[0]
         res_at_num.append(num_atoms)
         residues.append(resi)
+        res_per_res.append(residue.iloc[0].residue_name)
         for _, atom in residue.iterrows():
             n = atom.atom_name
             if atom.alt_loc in invalid_location:
@@ -300,7 +302,7 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
                        is_struct_0.unsqueeze(2)), dim=2)
     feats_res = feats_res[u,v]
     feats_all = th.cat((feats_at.float().squeeze(), feats_res), dim=-1)
-    return u, v, feats_all
+    return u, v, feats_all, res_per_res
 
 
 def calc_struct_properties(resname: List[str],
