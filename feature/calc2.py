@@ -43,13 +43,12 @@ aa_trans = {
 }
 
 nan_type = float('nan')
-nan_xyz = (nan_type, nan_type, nan_type)
 atom_id = {ch : i for i, ch in enumerate(CHARGE.keys())}
 EPS = th.Tensor([78*1e-2]) # unit Farad / angsterm
 CLIP_MAX = th.FloatTensor([1,1,1,1,1,1,1,10,10,10,10,1,1,1,1,1,1])
 CLIP_MIN = th.FloatTensor([0,0,0,0,0,0,0,-10,-10,-10,1e-20,0,0,0,0,0,0])
 side_chain_atom_names = ['CA', 'C', 'N', 'O']
-invalid_location = {'B','C','D'}
+
 FEATNAME = [
     'disulfide', 'hydrophobic', 'cation_pi', 'arg_arg', 'salt_bridge', 'hbond', 'vdw',
     #'cx','cy','cz', 'ljx', 'ljy', 'ljz',
@@ -63,7 +62,7 @@ def fill_missing_part_by_index(missing_index: int,
     missing_df = hetdf[hetdf['residue_number'] == missing_index]
     if missing_df.empty:
         raise KeyError(f"missing residue {missing_index} not found")
-    # convert miss to df
+    # convert miss to df.df['ATOM']
     missing_df['record_name'] = 'ATOM'
     missing_df['residue_name'] = missing_df['residue_name'].apply(lambda x: aa_trans[x] if x in aa_trans.keys() else x)
     return missing_df
@@ -100,7 +99,7 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     return u, v for feats
     '''
     if isinstance(pdb_loc, str):
-        data = PandasPdb().read_pdb(pdb_loc)#
+        data = PandasPdb().read_pdb(pdb_loc)#.df['ATOM']
     # elif isinstance(pdb_loc, atomium.structures.Model):
     #     data = pdb_loc.residues()
     # elif isinstance(pdb_loc, list):
@@ -112,58 +111,65 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     else: 
         if isinstance(t, (int, float)) and t < 5:
             print('dumb threshold')
-    atoms = data.df['ATOM']
-    hetatm = data.df['HETATM']
-
-    hetatm = hetatm[hetatm.residue_name == 'MSE']
-    data = pd.concat([atoms, hetatm], axis=0)
-    data.sort_values(['chain_id','residue_number', 'atom_number'], inplace=True)
-
     if chain is not None:
-        data = data.loc[data['chain_id'] == chain]
+        data.df['ATOM'] = data.df['ATOM'].loc[data.df['ATOM']['chain_id'] == chain]
     if indices_to_read is not None:
-        data = data.loc[data['residue_number'].isin(indices_to_read)]
-
+        data.df['ATOM'] = data.df['ATOM'].loc[data.df['ATOM']['residue_number'].isin(indices_to_read)]
+    minlength = data.df['ATOM']['residue_number'].min()
+    chainlength = data.df['ATOM']['residue_number'].max()
+    theo_range = list(range(minlength, chainlength+1))
+    prac_range = data.df['ATOM']['residue_number'].tolist()
+    missing = list(set(theo_range) - set(prac_range))
+# fill missing residues
+    for missing_resid in missing:
+        try:
+            data.df['ATOM'] = pd.concat([data.df['ATOM'], fill_missing_part_by_index(missing_resid, data,chain)], ignore_index=True)
+        except KeyError:
+            print(f"missing residue: {missing_resid} cannot be filled")
     atoms, name = [], []
     ca_xyz, cb_xyz = [], []
     residues, residues_name = [], []
     is_side_chain = []
     res_at_num = []
     skip_c = 0
-    for resi, (_, residue) in enumerate(data.groupby(['chain_id', 'residue_number'])):
-        missing_cb = True
-        missing_ca = True
-        num_atoms = residue.shape[0]
-        res_at_num.append(num_atoms)
-        residues.append(resi)
-        for _, atom in residue.iterrows():
-            n = atom.atom_name
-            if atom.alt_loc in invalid_location:
+    for resid in range(minlength, chainlength+1):
+        res = data.df['ATOM'][data.df['ATOM']['residue_number'] == resid]
+        for i, atom in res.iterrows():
+            # print(atom.alt_loc)
+            if atom.alt_loc in ['B','C','D']:
                 skip_c += 1
+                #  df = df.loc[~df.index.isin([i]), :]
+                res = res[res.index != i]
+                # if atom.alt_loc != 'A':
                 continue
-            if atom.atom_name == 'CA':
+            n = atom['atom_name']
+            # print(resid)
+            if n == 'CA':
+                # print(f"Residue: {resid}, atom: {n}")
                 ca_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
-                missing_ca = False
-            elif atom.atom_name == 'CB':
+            elif n == 'CB':
                 cb_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
-                missing_cb = False
             elif len(n) == 3:
                 n = n[:2]
-
-            atoms.append((atom.x_coord, atom.y_coord, atom.z_coord))
-            residues_name.append(atom.residue_name)
-            name.append(n)
-            is_side_chain.append(True if n in side_chain_atom_names else False)   
         
-        if missing_cb:
-            cb_xyz.append(nan_xyz)
-        if missing_ca:
-            ca_xyz.append(nan_xyz)
+            name.append(n)
+            is_side_chain.append(True if n in side_chain_atom_names else False)
+            atoms.append((atom.x_coord, atom.y_coord, atom.z_coord))
+            residues.append(atom['residue_number'])
+            residues_name.append(res['residue_name'].tolist()[0])
+        r_at_name = res['atom_name'].tolist()
+        res_at_num.append(len(r_at_name))
+        if 'CB' not in r_at_name:
 
-
+            # continue
+            cb_xyz.append((nan_type, nan_type, nan_type))
+        if 'CA' not in r_at_name:
+            # continue
+            # raise KeyError('missing CA atom at residue: ', resid)
+            ca_xyz.append((nan_type, nan_type, nan_type))
     # assign parameters to atoms
     num_atoms = len(name)
-    #print('skipped: ', skip_c)
+    print('skipped: ', skip_c)
 
     # print(len(ca_xyz))
     # #CHECK for duplicates in ca_xyz
@@ -485,7 +491,7 @@ def read_helix_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     return u, v for feats
     '''
     if isinstance(pdb_loc, str):
-        data = PandasPdb().read_pdb(pdb_loc)#
+        data = PandasPdb().read_pdb(pdb_loc)#.df['ATOM']
     # elif isinstance(pdb_loc, atomium.structures.Model):
     #     data = pdb_loc.residues()
     # elif isinstance(pdb_loc, list):
@@ -498,7 +504,7 @@ def read_helix_struct(pdb_loc: Union[str, list, atomium.structures.Model],
         if isinstance(t, (int, float)) and t < 5:
             print('dumb threshold')
     if chain is not None:
-        data = data.loc[data['chain_id'] == chain]
+        data.df['ATOM'] = data.df['ATOM'].loc[data.df['ATOM']['chain_id'] == chain]
 # fill missing residues
     atoms, name = [], []
     ca_xyz, cb_xyz = [], []
@@ -507,12 +513,12 @@ def read_helix_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     res_at_num = []
     #check for missing residues
     missing_indices = [
-        x for x in indices_to_read if x not in data['residue_number'].unique().tolist()
+        x for x in indices_to_read if x not in data.df['ATOM']['residue_number'].unique().tolist()
         ]
     if missing_indices:
         for missing_resid in missing_indices:
             try:
-                data = pd.concat([data, fill_missing_part_by_index(missing_resid, data,chain)], ignore_index=True)
+                data.df['ATOM'] = pd.concat([data.df['ATOM'], fill_missing_part_by_index(missing_resid, data,chain)], ignore_index=True)
             except KeyError:
                 print(f"missing residue: {missing_resid} cannot be filled")
 
@@ -520,7 +526,7 @@ def read_helix_struct(pdb_loc: Union[str, list, atomium.structures.Model],
 
     skip_c = 0
     for resid in indices_to_read:
-        res = data[data['residue_number'] == resid]
+        res = data.df['ATOM'][data.df['ATOM']['residue_number'] == resid]
         if res.empty:
             res = data.df['HETATM'][data.df['HETATM']['residue_number'] == resid]
         # print(resid, res.residue_name.unique())
