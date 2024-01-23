@@ -1,6 +1,7 @@
 import os
 from typing import List
 from dataclasses import dataclass
+import pickle
 
 import torch
 import dgl
@@ -47,5 +48,10 @@ class GraphData:
         g.edata['f'] = self.feats
         return g
 
+    @staticmethod
+    def from_pickle(path: str) -> "GraphData":
+        assert os.path.isfile(path)
+        with open(path, 'rb') as fp:
+            return pickle.load(fp)
 
         
