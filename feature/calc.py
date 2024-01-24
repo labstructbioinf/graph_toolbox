@@ -88,8 +88,8 @@ def residue_atoms_criteria(iterator, criteria_dict : dict, storage: list):
     return storage
 
 def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
-                chain: Union[str, None],
-                t: Union[float, None],
+                chain: Union[str, None] = None,
+                t: Union[float, None] = None,
                 indices_to_read: Union[list, None] = None
                 ) -> Tuple[th.Tensor]:
     '''
