@@ -11,6 +11,7 @@ from .calc import FEATNAME
 from .params import ACIDS_MAP_DEF
 
 _PDBCHAIN_COL = 'pdb_chain'
+_SEQUENCE_COL = 'dssp_sequence'
 
 class GraphData:
     metadata: dict = dict()
@@ -23,11 +24,13 @@ class GraphData:
     def __init__(self, path, metadata):
         self.metadata = metadata
         # check pdb chain
-        for _PDBCHAIN_COL in metadata:
+        if _PDBCHAIN_COL in metadata:
             pdbchain = metadata[_PDBCHAIN_COL]
         else:
             pdbchain = None
         self.u, self.v, self.feats, sequence = read_struct(path, chain=pdbchain, t = self.ca_threshold)
+        if _SEQUENCE_COL in metadata:
+            sequence = metadata[_SEQUENCE_COL]
         assert self.feats.shape[1] == len(self.featname)
         seqasint = [ACIDS_MAP_DEF[res] for res in sequence]
         self.sequence_int = torch.LongTensor(seqasint)
