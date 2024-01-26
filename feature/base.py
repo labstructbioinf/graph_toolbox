@@ -10,6 +10,7 @@ from .calc import read_struct
 from .calc import FEATNAME
 from .params import ACIDS_MAP_DEF
 
+_PDBCHAIN_COL = 'pdb_chain'
 
 class GraphData:
     metadata: dict = dict()
@@ -21,7 +22,12 @@ class GraphData:
 
     def __init__(self, path, metadata):
         self.metadata = metadata
-        self.u, self.v, self.feats, sequence = read_struct(path, chain=None, t = self.ca_threshold)
+        # check pdb chain
+        for _PDBCHAIN_COL in metadata:
+            pdbchain = metadata[_PDBCHAIN_COL]
+        else:
+            pdbchain = None
+        self.u, self.v, self.feats, sequence = read_struct(path, chain=pdbchain, t = self.ca_threshold)
         assert self.feats.shape[1] == len(self.featname)
         seqasint = [ACIDS_MAP_DEF[res] for res in sequence]
         self.sequence_int = torch.LongTensor(seqasint)
@@ -30,7 +36,8 @@ class GraphData:
     @classmethod
     def from_pdb(cls, path: str, metadata: dict = dict(), **kwargs) -> "GraphData":
         """
-        do all
+        metadata columns used
+        `pdb_chain`
         """
         assert os.path.isfile(path)
         for key, val in kwargs.items():
