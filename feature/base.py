@@ -18,7 +18,6 @@ class GraphData:
     feats: torch.Tensor
     featname: List[str] = FEATNAME
     sequence: List[str]
-    sequence_int: torch.LongTensor
     ca_threshold: float = 7
 
     def __init__(self, path, metadata):
@@ -28,12 +27,11 @@ class GraphData:
             pdbchain = metadata[_PDBCHAIN_COL]
         else:
             pdbchain = None
-        self.u, self.v, self.feats, sequence = read_struct(path, chain=pdbchain, t = self.ca_threshold)
+        self.u, self.v, self.feats, _ = read_struct(path, chain=pdbchain, t = self.ca_threshold)
         if _SEQUENCE_COL in metadata:
-            sequence = metadata[_SEQUENCE_COL]
+            self.sequence = metadata[_SEQUENCE_COL]
         assert self.feats.shape[1] == len(self.featname)
-        seqasint = [ACIDS_MAP_DEF[res] for res in sequence]
-        self.sequence_int = torch.LongTensor(seqasint)
+
 
 
     @classmethod
@@ -53,6 +51,8 @@ class GraphData:
         """
         create graph from data
         """
+        seqasint = [ACIDS_MAP_DEF[res] for res in self.sequence]
+        self.sequence_int = torch.LongTensor(seqasint)
         g = dgl.graph((self.u, self.v))
         g.ndata['f'] = self.sequence_int
         g.edata['f'] = self.feats
