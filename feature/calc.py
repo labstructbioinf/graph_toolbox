@@ -42,6 +42,16 @@ aa_trans = {
     # ...
 }
 
+def map_aa_name(resname):
+    """
+    map residue residue names into standrad ones
+    """
+    if resname in aa_trans:
+        return aa_trans[resname]
+    else:
+        return aa_trans
+
+
 nan_type = float('nan')
 nan_xyz = (nan_type, nan_type, nan_type)
 atom_id = {ch : i for i, ch in enumerate(CHARGE.keys())}
@@ -114,8 +124,9 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
             print('dumb threshold')
     atoms = data.df['ATOM']
     hetatm = data.df['HETATM']
-
-    hetatm = hetatm[hetatm.residue_name == 'MSE']
+    hetatm = hetatm[hetatm.residue_name.isin(aa_trans)]
+    hetatm['residue_name'] = hetatm['residue_name'].apply(map_aa_name)
+    #hetatm = hetatm[hetatm.residue_name == 'MSE']
     data = pd.concat([atoms, hetatm], axis=0)
     data.sort_values(['chain_id','residue_number', 'atom_number'], inplace=True)
     
@@ -166,11 +177,9 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
 
     # assign parameters to atoms
     num_atoms = len(name)
+    num_residues = len(residues)
     #print('skipped: ', skip_c)
 
-    # print(len(ca_xyz))
-    # #CHECK for duplicates in ca_xyz
-    # print(len(set(ca_xyz)))
     name_base = [n[0] for n in name]
     at_charge = [CHARGE[n] for n in name_base]
     at_vdw = [SIGMA[n] for n in name_base]
@@ -252,7 +261,7 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     sb_tmp1 = th.BoolTensor(is_at_sb_c1).view(-1, 1) & th.BoolTensor(is_at_sb_c2).view(1, -1)
     sb_tmp2 = th.BoolTensor(is_res_sb_c1).view(-1, 1) & th.BoolTensor(is_res_sb_c2).view(1, -1)
     salt_bridge = sb_tmp1 & (at_dist < 5.0) & sb_tmp2
-    #breakpoint()
+
     feats = th.cat((disulfde.unsqueeze(2),
                    hydrophobic.unsqueeze(2),
                    cation_pi.unsqueeze(2),
@@ -294,7 +303,7 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     is_caca_cbcb = is_caca_cbcb[~th.isnan(is_caca_cbcb).any(axis=1)]
     # print(data.residue_number.head(1), data.residue_number.tail(1))
     # print(f" inv_ca12: {inv_ca12.shape}, is_caca_cbcb: {is_caca_cbcb.shape}, is_self: {is_self.shape}, is_seq_0: {is_seq_0.shape}, is_seq_1: {is_seq_1.shape}, is_struct_0: {is_struct_0.shape}")
-
+    breakpoint()
     feats_res = th.cat((inv_ca12.unsqueeze(2),
                         is_caca_cbcb.unsqueeze(2),
                         is_self.unsqueeze(2),
