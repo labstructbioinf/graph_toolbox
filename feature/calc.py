@@ -88,9 +88,9 @@ def residue_atoms_criteria(iterator, criteria_dict : dict, storage: list):
     return storage
 
 def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
-                chain: Union[str, None] = None,
-                t: Union[float, None] = None,
-                indices_to_read: Union[list, None] = None
+                chain: Optional[str] = None,
+                t: Optional[float] = None,
+                indices_to_read: Optional[list] = None
                 ) -> Tuple[th.Tensor]:
     '''
     params:
@@ -118,12 +118,13 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     hetatm = hetatm[hetatm.residue_name == 'MSE']
     data = pd.concat([atoms, hetatm], axis=0)
     data.sort_values(['chain_id','residue_number', 'atom_number'], inplace=True)
-
+    
     if chain is not None:
-        data = data.loc[data['chain_id'] == chain]
+        data = data.loc[data['chain_id'] == chain].copy()
+        if data.shape[0] == 0:
+            raise ValueError(f"no data in chain {chain}")
     if indices_to_read is not None:
-        data = data.loc[data['residue_number'].isin(indices_to_read)]
-
+        data = data.loc[data['residue_number'].isin(indices_to_read)].copy()
     atoms, name = [], []
     ca_xyz, cb_xyz = [], []
     residues, residues_name = [], []
@@ -251,7 +252,7 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     sb_tmp1 = th.BoolTensor(is_at_sb_c1).view(-1, 1) & th.BoolTensor(is_at_sb_c2).view(1, -1)
     sb_tmp2 = th.BoolTensor(is_res_sb_c1).view(-1, 1) & th.BoolTensor(is_res_sb_c2).view(1, -1)
     salt_bridge = sb_tmp1 & (at_dist < 5.0) & sb_tmp2
-    
+    #breakpoint()
     feats = th.cat((disulfde.unsqueeze(2),
                    hydrophobic.unsqueeze(2),
                    cation_pi.unsqueeze(2),
