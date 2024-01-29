@@ -42,6 +42,35 @@ aa_trans = {
     # ...
 }
 
+
+def dihedral(n: th.Tensor, ca: th.Tensor, c: th.Tensor):
+    """
+    N - [ CA - C - N - CA ] - C
+             b1  b2   b3  vectors 
+               n1   n2    planes
+    Returns:
+        torch.FloatTensor: phi
+        torch.FloatTensor: psi
+    """
+
+    b1 = ca - c
+    b2 = c.roll(1) - n.roll(1)
+    b3 = n.roll(1) - ca.roll(1)
+    n1 = th.cross(b1, b2)
+    n2 = th.cross(b2, b3)
+    m1 = th.cross(n1, b2)
+    x = (n1 * n2).sum(1)
+    y = (m1 * n2).sum(1)
+
+    dihedral = th.atan2(y, x)
+    phi = dihedral
+    psi = dihedral.roll(1)
+    # fill borders
+    phi[0] = 0
+    psi[0] = 0
+    return phi, psi
+
+
 def map_aa_name(resname):
     """
     map residue residue names into standrad ones
@@ -78,7 +107,7 @@ def fill_missing_part_by_index(missing_index: int,
     missing_df['residue_name'] = missing_df['residue_name'].apply(lambda x: aa_trans[x] if x in aa_trans.keys() else x)
     return missing_df
 
-def is_atom_in_group(atoms: List[str], group: set, size: int):
+def is_atom_in_group(atoms: List[str], group: set, size: int) -> th.BoolTensor:
     arr = th.zeros(size, dtype=th.bool)
     for i, at in enumerate(atoms):
         if at in group:
@@ -198,9 +227,9 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     is_at_hb_d = [False]*num_atoms
     is_at_hb_ac = [True if at.startswith("C") else False for at in name]
     is_at_hb_ad = [True if at.startswith('NH') else False for at in name]
-    is_res_ar = [True if r in AROMATIC else False for r in residues_name]
-    is_res_cpi = [True if at in CATION_PI else False for at in name]
-    is_res_arg = [True if r in {'ARG'} else False for r in residues_name]
+    is_res_ar = is_atom_in_group(residues_name, AROMATIC, num_atoms)
+    is_res_cpi = is_atom_in_group(name, CATION_PI, num_atoms)
+    is_res_arg = is_atom_in_group(residues_name, 'ARG', num_atoms)
     # salt bridge
     is_at_sb_c1 = [True if at in SALT_BRIDGE_C1 else False for at in name]
     is_res_sb_c1 = [True if at in {'ARG', 'LYS'} else False for at in residues_name]
@@ -250,8 +279,8 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     # binary interactions
     disulfde = (at_id == 4) & (at_dist < 2.2)
     hydrophobic = (at_dist < 5.0) & (at_is_side == False) & th.BoolTensor(is_res_hf)
-    cation_pi = (at_dist < 6) & th.BoolTensor(is_res_cpi)
-    arg_arg = (at_dist < 5.0) & th.BoolTensor(is_res_arg)
+    cation_pi = (at_dist < 6) & is_res_cpi
+    arg_arg = (at_dist < 5.0) & is_res_arg
     vdw = ((at_dist - sigma_radii) < 0.5) & at_is_vdw
     # hbonds
     hbond = at_is_hba.view(-1, 1) & at_is_hbd.view(1, -1) & (at_dist < 3.5)

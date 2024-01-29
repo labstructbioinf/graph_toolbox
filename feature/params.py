@@ -99,9 +99,31 @@ amino_acid_residues_extended_upper = [
     'NLE',  # Norleucine
 ]
 
-ACIDS_ORDER : str = amino_acid_residues_extended_upper
+aa_3to1 = {"ALA": "A",
+           "ARG": "R",
+           "ASN": "N",
+           "ASP": "D",
+           "CYS": "C",
+           "GLU": "E",
+           "GLN": "Q",
+           "GLY": "G",
+           "HIS": "H",
+           "ILE": "I",
+           "LEU": "L",
+           "LYS": "K",
+           "MET": "M",
+           "PHE": "F",
+           "PRO": "P",
+           "SER": "S",
+           "THR": "T",
+           "TRP": "W",
+           "TYR": "W",
+           "VAL": "V"}
 
-ACIDS_MAP_DEF = {acid : nb for  nb, acid in enumerate(ACIDS_ORDER)}
+ACIDS_ORDER : str = amino_acid_residues_extended_upper
+ACIDS_MAP_DEF3 = {acid : nb for  nb, acid in enumerate(aa_3to1)}
+ACIDS_3TO1 = aa_3to1
+ACIDS_MAP_DEF = {acid : nb for  nb, acid in enumerate(ACIDS_3TO1.values())}
 ACIDS_MAP_R = {nb : acid for  nb, acid in enumerate(ACIDS_ORDER)}
 
 NUM_SS_LETTERS = len(set(SS_MAP_EXT.values()))

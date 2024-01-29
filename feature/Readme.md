@@ -1,26 +1,26 @@
 
 
 ## residue-residue interactions available
-|interactions|     Foldx | graphein | RIP-MD | Kamil | interaction type |
-|-------|-----------|----------|--------|-------|-----------------------|
-|**aromatic**|        | [x]        | [x] | [x]   |                      |
-|**hydrogen**| [x]     |     [x]    | [x] | |  binary  | 
-|**hydrophobic**|      |   [x]     | [x]   |  |  binary |  
-|**volumetric**|  [x]  |          | | |  |
-|**vdW**|              | [x]      | [x] | |  binary |
-|**charge**| [x]       |           | [x] | [x] | |
-|contact| [x]      |           | [x] | [x] | |
-|**disulfide**| [x]    |  [x]       |  [x] | [x] | binary |
-|partcov| [x]      |          | | |
-|water| [x]        |           | | |
-|distance|      |   [x]         |  [x] | [x] | |
-|**cation pi**|      |    [x]        | [x] | [x] | binary |
-|**ionic**|      |        [x]    | | |
-|**salt bridges**|   |    [x]         | [x] | [x] | binary |
-|stacking pi |    |     [x]         | | |
-|delaunay     |    |        [x]     | | |
-|**arg - arg**|       |            |  [x] | [x] | binary |
---------------------------------------
+|interactions   |   Foldx | graphein | RIP-MD | Kamil | interaction type |
+|---------------|---------|----------|--------|-------|------------------|
+|**aromatic**   | [x]     | [x]      | [x]    | [x]   |                  |
+|**hydrogen**   | [x]     |     [x]  | [x]    | [x]   |  binary          | 
+|**hydrophobic**|         |   [x]    | [x]    | [x]   |   binary         |  
+|**volumetric** |  [x]    |          |        |       |                  |
+|**vdW**        |         | [x]      | [x]    |       |  binary          |
+|**charge**     | [x]     |          | [x]    |       |                  |
+|contact        |     [x] |   [x]    | [x]    | [x]   |                  |
+|**disulfide**  |    [x]  |  [x]     |  [x]   | [x]   |  binary          |
+|partcov        |   [x]   |          |        |       |                  |
+|water          |  [x]    |          |        |       |                  |
+|distance       |         |   [x]    |  [x]   | [x]   |                  |
+|**cation pi**  |         | [x]      | [x]    | [x]   | binary           |
+|**ionic**      |         |  [x]     |        |       |                  |
+|**salt bridges**|        |    [x]   | [x]    | [x]   | binary           |
+|stacking pi     |        |     [x]  |        |       |                  |
+|delaunay       |         |  [x]     |        |       |                  |
+|**arg - arg**  |         |          |  [x]   | [x]    | binary          |
+| $$\phi-\psi$$ |         |          |        |        |                 |
 
 
 * partcov -  Interactions made by protein atoms and metals
