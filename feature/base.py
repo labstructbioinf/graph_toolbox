@@ -61,7 +61,7 @@ class GraphData:
         """
         if len(self.sequence[0]) == 3:
             seqasint = [ACIDS_MAP_DEF3[res] for res in self.sequence]
-        elif len(self.sequence[0] == 1):
+        elif len(self.sequence[0]) == 1:
             seqasint = [ACIDS_MAP_DEF[res] for res in self.sequence]
         else:
             raise TypeError('invalid aa sequence letter: {self.sequence[0]} dictionary should be in one ore three letter code')    

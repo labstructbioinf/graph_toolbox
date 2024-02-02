@@ -117,7 +117,7 @@ aa_3to1 = {"ALA": "A",
            "SER": "S",
            "THR": "T",
            "TRP": "W",
-           "TYR": "W",
+           "TYR": "Y",
            "VAL": "V"}
 
 ACIDS_ORDER : str = amino_acid_residues_extended_upper
