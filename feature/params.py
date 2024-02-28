@@ -1,5 +1,12 @@
 from typing import Dict
 
+FEATNAME = [
+    'disulfide', 'hydrophobic', 'cation_pi', 'arg_arg', 'salt_bridge', 'hbond', 'vdw',
+    #'cx','cy','cz', 'ljx', 'ljy', 'ljz',
+    'ca_vs_cb', 'self', 'is_seq', 'is_seq_not', 'is_struct'
+]
+NFEATNAME = ['psi', 'phi', 'chi1', 'chi2']
+
 BACKBONE = {"CA", "C", "N", "O"}
 HYDROPHOBIC = {'ALA', 'VAL', 'LEU', 'ILE', 'MET', 'PHE', 'TRP', 'RPO', 'TYR'}
 AROMATIC = {'TRP', 'TYR', 'PHE'}

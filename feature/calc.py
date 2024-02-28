@@ -3,7 +3,6 @@ from typing import Union, Tuple, List, Optional
 
 import sys
 sys.path.append('..')
-import atomium
 import pandas as pd
 pd.options.mode.chained_assignment = None  # default='warn'
 import torch as th
@@ -43,7 +42,7 @@ aa_trans = {
     # ...
 }
 
-
+@th.jit.script
 def dihedral(n: th.Tensor, ca: th.Tensor, c: th.Tensor):
     """
     Args:
@@ -102,12 +101,7 @@ CLIP_MAX = th.FloatTensor([1,1,1,1,1,1,1,10,10,10,10,1,1,1,1,1,1])
 CLIP_MIN = th.FloatTensor([0,0,0,0,0,0,0,-10,-10,-10,1e-20,0,0,0,0,0,0])
 side_chain_atom_names = ['CA', 'C', 'N', 'O']
 invalid_location = {'B','C','D'}
-FEATNAME = [
-    'disulfide', 'hydrophobic', 'cation_pi', 'arg_arg', 'salt_bridge', 'hbond', 'vdw',
-    #'cx','cy','cz', 'ljx', 'ljy', 'ljz',
-    '1/caca', 'ca_vs_cb', 'self', 'is_seq', 'is_seq_not', 'is_struct'
-]
-NFEATNAME = ['']
+
 
 def fill_missing_part_by_index(missing_index: int,
                                biopandas_df: str,
@@ -140,7 +134,7 @@ def residue_atoms_criteria(iterator, criteria_dict : dict, storage: list):
                 storage[i] = True
     return storage
 
-def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
+def read_struct(pdb_loc: str,
                 chain: Optional[str] = None,
                 t: Optional[float] = None,
                 indices_to_read: Optional[list] = None
@@ -217,7 +211,7 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
                 cg_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
             elif len(n) == 3:
                 n = n[:2]
-            atoms.append(nan_xyz)
+            atoms.append((atom.x_coord, atom.y_coord, atom.z_coord))
             residues_name.append(atom.residue_name)
             name.append(n)
             is_side_chain.append(True if n in side_chain_atom_names else False)   
@@ -234,12 +228,11 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     #print('skipped: ', skip_c)
 
     name_base = [n[0] for n in name]
-    at_charge = [CHARGE[n] for n in name_base]
+    #at_charge = [CHARGE[n] for n in name_base]
     at_vdw = [SIGMA[n] for n in name_base]
-    atom_arr = [atom_id[n] for n in name_base]
+    #atom_arr = [atom_id[n] for n in name_base]
     at_eps = [EPSILON[n] for n in name_base]
     # convert to tensors
-    res_id = th.LongTensor(residues)
     res_ca = th.FloatTensor(ca_xyz)
     res_dist = th.cdist(res_ca, res_ca)
     res_cb = th.FloatTensor(cb_xyz)
@@ -295,9 +288,10 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     sigma_radii = (sigma.view(-1, 1) + sigma.view(1, -1))
     # binary interactions
     disulfde = (at_id == 4) & (at_dist < 2.2)
-    hydrophobic = (at_dist < 5.0) & (at_is_side == False) & th.BoolTensor(is_res_hf)
+    at_dist_5a = at_dist < 5.0
+    hydrophobic = at_dist_5a & (at_is_side == False) & th.BoolTensor(is_res_hf)
     cation_pi = (at_dist < 6) & is_res_cpi
-    arg_arg = (at_dist < 5.0) & is_res_arg
+    arg_arg = at_dist_5a & is_res_arg
     vdw = ((at_dist - sigma_radii) < 0.5) & at_is_vdw
     # hbonds
     hbond = at_is_hba.view(-1, 1) & at_is_hbd.view(1, -1) & (at_dist < 3.5)
@@ -313,7 +307,6 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
                    salt_bridge.unsqueeze(2),
                    hbond.unsqueeze(2),
                    vdw.unsqueeze(2)), dim=2)
-
     # change feature resolution
     # residue level features
     #breakpoint()
@@ -330,8 +323,6 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     th.clamp(feats_at, min=0, max=1, out=feats_at)
     # gather residue level feature, such as edge criteria
     cb_dist = th.cdist(res_cb, res_cb)
-    inv_ca12 = 1/(res_dist + 1e-5)
-    inv_ca12.fill_diagonal_(0)
     res_id_short = th.arange(0, num_residues)
     is_seq = th.abs(res_id_short.unsqueeze(0) - res_id_short.unsqueeze(1))
     is_self = is_seq == 0
@@ -339,157 +330,20 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     is_seq_1 = is_seq > 5
     is_struct_0 = is_seq > 1
     is_caca_cbcb = cb_dist < res_dist
-    # inv_ca12 = inv_ca12[(~th.isnan(inv_ca12).any(axis=1)) and (~th.isnan(inv_ca12).any(axis=0))] 
     is_caca_cbcb = is_caca_cbcb[~th.isnan(is_caca_cbcb).any(axis=1)]
-    # print(data.residue_number.head(1), data.residue_number.tail(1))
-    # print(f" inv_ca12: {inv_ca12.shape}, is_caca_cbcb: {is_caca_cbcb.shape}, is_self: {is_self.shape}, is_seq_0: {is_seq_0.shape}, is_seq_1: {is_seq_1.shape}, is_struct_0: {is_struct_0.shape}")
-    feats_res = th.cat((inv_ca12.unsqueeze(2),
-                        is_caca_cbcb.unsqueeze(2),
-                        is_self.unsqueeze(2),
-                       is_seq_0.unsqueeze(2),
-                       is_seq_1.unsqueeze(2),
-                       is_struct_0.unsqueeze(2)), dim=2)
+    
+    feats_res = th.stack((is_caca_cbcb,
+                        is_self,
+                       is_seq_0,
+                       is_seq_1,
+                       is_struct_0), dim=2)
     feats_res = feats_res[u,v]
     # geometic and others
     phi, psi = dihedral(res_n, res_ca, res_c)
     chi1, chi2 = dihedral(res_ca, res_cb, res_cg)
-    #breakpoint()
     nfeats = th.stack((phi, psi, chi1, chi2), dim=1).squeeze(-1)
     efeats = th.cat((feats_at.float().squeeze(), feats_res), dim=-1)
     return u, v, efeats, nfeats, res_per_res
-
-
-def calc_struct_properties(resname: List[str],
-                            atomname: List[str],
-                            resatnum: List[int],
-                            atomxyz: th.Tensor,
-                            caxyz: th.Tensor,
-                            cbxyz: th.Tensor,
-                            t: float = 7):
-
-    num_atoms = len(resname)
-    num_residues = caxyz.shape[0]
-    atombase = [n[0] for n in atomname]
-    at_charge = [CHARGE[n] for n in atombase]
-    at_vdw = [SIGMA[n] for n in atombase]
-    atom_arr = [atom_id[n] for n in atombase]
-    at_eps = [EPSILON[n] for n in atombase]
-    # convert to tensors
-    # Residues level
-    res_id = th.arange(0, num_residues)
-    res_ca = th.from_numpy(caxyz)
-    res_dist = th.cdist(res_ca, res_ca)
-    res_cb = th.from_numpy(cbxyz)
-    # Atomic level
-    at_xyz = th.from_numpy(atomxyz)
-    at_dist = th.cdist(at_xyz, at_xyz)
-    at_id = th.LongTensor(at_eps)
-    sigma = th.FloatTensor(at_vdw)
-    epsilon = th.FloatTensor(at_eps)
-    # check variuos atom/residue types
-    #is atom from side chain
-    at_is_side = is_atom_in_group(atomname, BACKBONE, num_atoms)
-    # hydrophobic
-    is_res_hf = is_atom_in_group(resname, HYDROPHOBIC, num_atoms)
-    # hydrogen bonds
-    is_res_hf = is_atom_in_group(resname, HYDROPHOBIC, num_atoms)
-    # hydrogen bonds
-    is_at_hb_a = th.zeros(num_atoms, dtype=th.bool)
-    is_at_hb_d = th.zeros(num_atoms, dtype=th.bool)
-    is_sulphur = [True if at.startswith('S') else False for at in atomname]
-    is_at_hb_ac = [True if at.startswith("C") else False for at in atomname]
-    is_at_hb_ad = [True if at.startswith('NH') else False for at in atomname]
-    is_res_ar = is_atom_in_group(resname, AROMATIC, num_atoms)
-    is_res_cpi = is_atom_in_group(atomname, CATION_PI, num_atoms)
-    is_res_arg = is_atom_in_group(resname, {'ARG'}, num_atoms)
-    # salt bridge
-    is_at_sb_c1 = is_atom_in_group(atomname, SALT_BRIDGE_C1, num_atoms)
-    is_res_sb_c1 = is_atom_in_group(resname, {'ARG', 'LYS'}, num_atoms)
-    is_at_sb_c2 = is_atom_in_group(resname, {'ARG', 'GLU'}, num_atoms)
-    is_res_sb_c2 = is_atom_in_group(resname, SALT_BRIDGE_C2, num_atoms)
-    # van der Waals
-    is_at_vdw_other = th.zeros(num_atoms, dtype=th.bool)
-    for i, (res, at) in enumerate(zip(resname, atomname)):
-        # residue level criteria
-        if res in VDW_ATOMS:
-            # atomic level criteria
-            if at in VDW_ATOMS[res]:
-                is_at_vdw_other[i] = True
-        # hbonds 
-        if res in HYDROGEN_ACCEPTOR:
-            if at in HYDROGEN_ACCEPTOR[res]:
-                is_at_hb_a[i] = True
-        if res in HYDROGEN_DONOR:
-            if at in HYDROGEN_DONOR[res]:
-                is_at_hb_a[i] = True
-    is_at_vdw  = is_atom_in_group(atombase, {'C', 'S'}, num_atoms)
-    is_at_sulphur = th.BoolTensor(is_sulphur)
-    is_at_hb_ac = th.BoolTensor(is_at_hb_ac)
-    is_at_hb_ad = th.BoolTensor(is_at_hb_ad)
-    # hbonds acceptor donors
-    at_is_hba = is_at_hb_a | is_at_hb_ac
-    at_is_hbd = is_at_hb_d | is_at_hb_ad
-    #vdw
-    at_is_vdw = is_at_vdw | is_at_vdw_other
-    atat_charge = th.FloatTensor(at_charge)
-    atat_charge = atat_charge.view(-1, 1) * atat_charge.view(1, -1)
-    sigma_coeff = (sigma.view(-1, 1) + sigma.view(1, -1))/2
-    sigma_radii = (sigma.view(-1, 1) + sigma.view(1, -1))
-    epsilon = th.sqrt(epsilon.view(-1, 1) * epsilon.view(1, -1))
-    # binary interactions
-    disulfde = is_at_sulphur & (at_dist < 3)
-    hydrophobic = (at_dist < 5.0) & ~at_is_side & is_res_hf
-    cation_pi = (at_dist < 6) & is_res_cpi
-    arg_arg = (at_dist < 5.0) & is_res_arg
-    vdw = ((at_dist - sigma_radii) < 0.5) & at_is_vdw
-    # hbonds
-    hbond = at_is_hba.view(-1, 1) & at_is_hbd.view(1, -1) & (at_dist < 3.5)
-    # salt bridge
-    sb_tmp1 = is_at_sb_c1.view(-1, 1) & is_at_sb_c2.view(1, -1)
-    sb_tmp2 = is_res_sb_c1.view(-1, 1) & is_res_sb_c2.view(1, -1)
-    salt_bridge = sb_tmp1 & (at_dist < 5.0) & sb_tmp2
-    
-    feats = th.cat((disulfde.unsqueeze(2),
-                   hydrophobic.unsqueeze(2),
-                   cation_pi.unsqueeze(2),
-                   arg_arg.unsqueeze(2),
-                   salt_bridge.unsqueeze(2),
-                   hbond.unsqueeze(2),
-                   vdw.unsqueeze(2)), dim=2)
-    feats = feats.float()
-    # change feature resolution
-    # from atomic level to residue level
-    efeat_list = list()
-    first_dim_split = feats.split(resatnum, 0)
-    for i in range(len(resatnum)):
-        efeat_list.extend(list(first_dim_split[i].split(resatnum, 1)))
-    u, v = th.where(res_dist < t)
-    uv = th.where(res_dist < t)[0]
-    # sum only for residues within threshold
-    feats_at = th.cat(tuple(efeat_list[e].sum((0,1), keepdim=True) for e in uv), dim=0)
-    feats_at 
-    # gather residue level feature, such as edge criteria
-    cb_dist = th.cdist(res_cb, res_cb)
-    inv_ca12 = 1/(res_dist + 1e-5)
-    inv_ca12.fill_diagonal_(0)
-    res_id_short = th.arange(0, res_id.max()+1, 1)
-    is_seq = th.abs(res_id_short.unsqueeze(0) - res_id_short.unsqueeze(1))
-    is_self = is_seq == 0
-    is_seq_0 = is_seq == 1
-    is_seq_1 = is_seq > 5
-    is_struct_0 = is_seq > 1
-    is_caca_cbcb = cb_dist < res_dist
-    feats_res = th.cat((inv_ca12.unsqueeze(2),
-                        is_caca_cbcb.unsqueeze(2),
-                        is_self.unsqueeze(2),
-                       is_seq_0.unsqueeze(2),
-                       is_seq_1.unsqueeze(2),
-                       is_struct_0.unsqueeze(2)), dim=2)
-    feats_res = feats_res[u,v]
-    feats_all = th.cat((feats_at.squeeze(), feats_res), dim=-1)
-    #feats_all = th.where(feats_all < CLIP_MIN, CLIP_MIN, feats_all)
-    #feats_all = th.where(feats_all > CLIP_MAX, CLIP_MAX, feats_all)
-    return u, v, feats_all
 
 
 def calc_named(pdb_loc: str, chain, t: float = 9) -> pd.DataFrame:

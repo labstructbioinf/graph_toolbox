@@ -8,20 +8,25 @@ import torch
 import dgl
 
 from .calc import read_struct
-from .calc import FEATNAME
-from .params import ACIDS_MAP_DEF, ACIDS_MAP_DEF3
+from .params import (ACIDS_MAP_DEF,
+                     ACIDS_MAP_DEF3,
+                     FEATNAME,
+                     NFEATNAME)
 
 _PDBCHAIN_COL = 'pdb_chain'
 _SEQUENCE_COL = 'dssp_sequence'
 
 
+class GraphObjectEerror(Exception):
+    pass
+
 class GraphData:
-    __version__ = "0.11"
+    __version__ = "0.12"
     metadata: dict = dict()
     feats: torch.Tensor
     nfeats: torch.Tensor
     featname: List[str] = FEATNAME
-    nfeatname: List[str] = ['phi', 'psi', 'chi1', 'chi2']
+    nfeatname: List[str] = NFEATNAME
     sequence: List[str]
     ca_threshold: float = 7
 
@@ -83,7 +88,10 @@ class GraphData:
 
     def to_edgedf(self) -> pd.DataFrame:
 
-        data = pd.DataFrame(self.feats.numpy(), columns=self.featname)
+        feats = self.feats.numpy()
+        if feats.shape[1] != len(self.featname):
+            raise GraphObjectEerror(f'number of edge features is diffrent then featnames {feats.shape} and {self.featname}')
+        data = pd.DataFrame(feats, columns=self.featname)
         # source aa residue
         u = [self.sequence[ui] for ui in self.u.tolist()]
         v = [self.sequence[vi] for vi in self.v.tolist()]
@@ -94,7 +102,8 @@ class GraphData:
     def to_nodedf(self) -> pd.DataFrame:
 
         feats = self.nfeats.numpy()
-        assert feats.ndim == 2, f'node feats invalid shape: {feats.shape}'
+        if feats.shape[1] != len(self.nfeatname):
+            raise GraphObjectEerror(f'number of node features is different then featnames {feats.shape} and {self.nfeatname}')
         data = pd.DataFrame(feats, columns=self.nfeatname)
         data['residue'] = self.sequence
         return data
