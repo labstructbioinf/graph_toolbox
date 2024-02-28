@@ -70,11 +70,16 @@ class GraphData:
         nfeats=nfeats,
         sequence=sequence)
     
-    def to_dgl(self) -> dgl.graph:
+    def to_dgl(self, validate: bool = True) -> dgl.graph:
         """
         create graph from data
+        Args:
+            validate: (bool) if True validate against ca-ca discon
+        Returns:
+            dgl.graph
         """
-        self.validate_ca_gaps()
+        if validate:
+            self.validate_ca_gaps()
         if len(self.sequence[0]) == 3:
             seqasint = [ACIDS_MAP_DEF3[res] for res in self.sequence]
         elif len(self.sequence[0]) == 1:
