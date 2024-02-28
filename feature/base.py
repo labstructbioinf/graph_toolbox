@@ -74,6 +74,7 @@ class GraphData:
         """
         create graph from data
         """
+        self.validate_ca_gaps()
         if len(self.sequence[0]) == 3:
             seqasint = [ACIDS_MAP_DEF3[res] for res in self.sequence]
         elif len(self.sequence[0]) == 1:
@@ -84,7 +85,17 @@ class GraphData:
         g = dgl.graph((self.u, self.v))
         g.ndata['f'] = self.sequence_int
         g.edata['f'] = self.feats
+        g.ndata['angles'] = self.nfeats
         return g
+
+    def validate_ca_gaps(self):
+        """
+        find gaps in Ca-Ca sequential connections
+        """
+        featid = self.featname.index('self')
+        feat = feat[:, featid].sum()
+        if feat <= self.feats.shape[0]:
+            raise GraphObjectEerror("some CA-CA sequence connections are above given threshold")
 
     def to_edgedf(self) -> pd.DataFrame:
 
@@ -97,6 +108,8 @@ class GraphData:
         v = [self.sequence[vi] for vi in self.v.tolist()]
         data['u'] = u
         data['v'] = v
+        data['u_resid'] = self.u.tolist()
+        data['v_resid'] = self.v.tolist()
         return data
     
     def to_nodedf(self) -> pd.DataFrame:
