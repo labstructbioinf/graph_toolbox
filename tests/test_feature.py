@@ -21,7 +21,8 @@ def remove_cache():
 ])
 def test_calc(pdb):
 
-    u, v, feats, r = read_struct(pdb)
+    u, v, feats, nfeats, struct_sequence = read_struct(pdb)
+
 
 @pytest.mark.parametrize("pdb", [
     "tests/data/3sxw.pdb.gz",
@@ -34,3 +35,16 @@ def test_graphobject(pdb):
     data.save("tmp.pdb")
     data_new = GraphData.load("tmp.pdb")
     graph_new = data_new.to_dgl()
+
+
+@pytest.mark.parametrize("pdb", [
+    "tests/data/3sxw.pdb.gz",
+    "tests/data/6iii.pdb"
+])
+def test_graphobject_methods(pdb):
+
+    data = GraphData.from_pdb(pdb)
+    graph = data.to_dgl()
+    edgedf = data.to_edgedf()
+    nodedf = data.to_nodedf()
+

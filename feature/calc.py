@@ -7,6 +7,7 @@ import atomium
 import pandas as pd
 pd.options.mode.chained_assignment = None  # default='warn'
 import torch as th
+from torch import linalg as LA
 from biopandas.pdb import PandasPdb
 from .params import (BACKBONE,
                     HYDROPHOBIC,
@@ -45,6 +46,10 @@ aa_trans = {
 
 def dihedral(n: th.Tensor, ca: th.Tensor, c: th.Tensor):
     """
+    Args:
+        nitrogen: torch.Tensor [num_atoms, xyz]
+        carbon_alpha: torch.Tensor
+        carbon: torch.Tensor
     N - [ CA - C - N - CA ] - C
              b1  b2   b3  vectors 
                n1   n2    planes
@@ -57,12 +62,20 @@ def dihedral(n: th.Tensor, ca: th.Tensor, c: th.Tensor):
     b2 = c.roll(1) - n.roll(1)
     b3 = n.roll(1) - ca.roll(1)
     n1 = th.cross(b1, b2)
+    n1 /= LA.vector_norm(n1, ord=2, dim=1, keepdim=True)
     n2 = th.cross(b2, b3)
-    m1 = th.cross(n1, b2)
-    x = (n1 * n2).sum(1)
-    y = (m1 * n2).sum(1)
-
-    dihedral = th.atan2(y, x)
+    n2 /= LA.vector_norm(n2, ord=2, dim=1, keepdim=True)
+    # normalize b2 
+    #b2 /= LA.vector_norm(b2, ord=2, dim=1, keepdim=True)
+    #m1 = th.cross(n1, b2)
+    #x = (n1 * n2).sum(1)
+    #y = (m1 * n2).sum(1)
+    b_cross23 = th.cross(b2, b3)
+    b_cross12 = th.cross(b1, b2)
+    b2_norm = LA.vector_norm(b2, ord=2, dim=1, keepdim=True)
+    b_cross1223 = (b_cross12*b_cross23).sum(1, keepdim=True).sqrt()
+    b21 = b2_norm*(b1*b_cross23).sum(1, keepdim=True).sqrt()
+    dihedral = th.atan2(b21, b_cross1223)
     phi = dihedral
     psi = dihedral.roll(1)
     # fill borders
@@ -94,6 +107,7 @@ FEATNAME = [
     #'cx','cy','cz', 'ljx', 'ljy', 'ljz',
     '1/caca', 'ca_vs_cb', 'self', 'is_seq', 'is_seq_not', 'is_struct'
 ]
+NFEATNAME = ['']
 
 def fill_missing_part_by_index(missing_index: int,
                                biopandas_df: str,
@@ -165,14 +179,18 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
             raise ValueError(f"no data in chain {chain}")
     if indices_to_read is not None:
         data = data.loc[data['residue_number'].isin(indices_to_read)].copy()
-    atoms, name = [], []
-    ca_xyz, cb_xyz = [], []
-    residues, residues_name = [], []
+    atoms, name = list(), list()
+    ca_xyz, cb_xyz = list(), list()
+    cg_xyz = list()
+    c_xyz, n_xyz = list(), list()
+    residues, residues_name = list(), list()
     res_per_res = list()
-    is_side_chain = []
-    res_at_num = []
+    is_side_chain = list()
+    res_at_num = list()
     skip_c = 0
     for resi, (_, residue) in enumerate(data.groupby(['chain_id', 'residue_number'])):
+        missing_cd = True
+        missing_cg = True
         missing_cb = True
         missing_ca = True
         num_atoms = residue.shape[0]
@@ -190,9 +208,16 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
             elif atom.atom_name == 'CB':
                 cb_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
                 missing_cb = False
+            elif atom.atom_name == "C":
+                c_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
+            elif atom.atom_name == 'N':
+                n_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
+            elif atom.atom_name == 'CG':
+                missing_cg = False
+                cg_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
             elif len(n) == 3:
                 n = n[:2]
-            atoms.append((atom.x_coord, atom.y_coord, atom.z_coord))
+            atoms.append(nan_xyz)
             residues_name.append(atom.residue_name)
             name.append(n)
             is_side_chain.append(True if n in side_chain_atom_names else False)   
@@ -200,6 +225,8 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
             cb_xyz.append(nan_xyz)
         if missing_ca:
             ca_xyz.append(nan_xyz)
+        if missing_cg:
+            cg_xyz.append(nan_xyz)
 
     # assign parameters to atoms
     num_atoms = len(name)
@@ -216,6 +243,9 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     res_ca = th.FloatTensor(ca_xyz)
     res_dist = th.cdist(res_ca, res_ca)
     res_cb = th.FloatTensor(cb_xyz)
+    res_cg = th.FloatTensor(cg_xyz)
+    res_c = th.FloatTensor(c_xyz)
+    res_n = th.FloatTensor(n_xyz)
     # print(minlength, chainlength)
     if num_residues != res_ca.shape[0]:
         raise ValueError(f"number of residues is different then CA atoms {num_residues} and {res_ca.shape[0]}")
@@ -231,10 +261,10 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     is_res_cpi = is_atom_in_group(name, CATION_PI, num_atoms)
     is_res_arg = is_atom_in_group(residues_name, 'ARG', num_atoms)
     # salt bridge
-    is_at_sb_c1 = [True if at in SALT_BRIDGE_C1 else False for at in name]
-    is_res_sb_c1 = [True if at in {'ARG', 'LYS'} else False for at in residues_name]
-    is_at_sb_c2 = [True if at in {'ARG', 'GLU'} else False for at in name]
-    is_res_sb_c2 = [True if at in SALT_BRIDGE_C2 else False for at in residues_name]
+    is_at_sb_c1 = is_atom_in_group(name, SALT_BRIDGE_C1, num_atoms)
+    is_res_sb_c1 = is_atom_in_group(residues_name, {'ARG', 'LYS'}, num_atoms)
+    is_at_sb_c2 = is_atom_in_group(name, {'ARG', 'GLU'}, num_atoms)
+    is_res_sb_c2 = is_atom_in_group(residues_name, SALT_BRIDGE_C2, num_atoms)
     # van der Waals
     is_at_vdw_other = [False]*num_atoms
     for i, (res, at) in enumerate(zip(residues_name, name)):
@@ -263,19 +293,6 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
     at_is_vdw = th.BoolTensor(is_at_vdw) | th.BoolTensor(is_at_vdw_other)
     # set inverse of the atom self distance to zero to avoid nan/inf when summing
     sigma_radii = (sigma.view(-1, 1) + sigma.view(1, -1))
-    '''
-    at_dist_inv = 1/(at_dist + 1e-6)
-    at_dist_inv.fill_diagonal_(0) 
-    atat_charge = th.FloatTensor(at_charge)
-    atat_charge = atat_charge.view(-1, 1) * atat_charge.view(1, -1)
-    sigma_coeff = (sigma.view(-1, 1) + sigma.view(1, -1))/2
-    
-    epsilon = th.sqrt(epsilon.view(-1, 1) * epsilon.view(1, -1))
-    
-    lj_r = sigma_coeff*at_dist_inv * (at_dist < 10)
-    lj6 = th.pow(lj_r, 6) 
-    lj12 = th.pow(lj_r, 12)
-    '''
     # binary interactions
     disulfde = (at_id == 4) & (at_dist < 2.2)
     hydrophobic = (at_dist < 5.0) & (at_is_side == False) & th.BoolTensor(is_res_hf)
@@ -296,14 +313,10 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
                    salt_bridge.unsqueeze(2),
                    hbond.unsqueeze(2),
                    vdw.unsqueeze(2)), dim=2)
-    '''
-    feats = feats.float()
-    coulomb_energy =  (1.0/3.14*EPS) * atat_charge * at_dist_inv
-    lenard_jones_energy = epsilon* (lj12 - lj6) 
-    energy_sum = coulomb_energy + lenard_jones_energy
-    '''
+
     # change feature resolution
     # residue level features
+    #breakpoint()
     efeat_list = list()
     first_dim_split = feats.split(res_at_num, 0)
     for i in range(len(res_at_num)):
@@ -337,8 +350,13 @@ def read_struct(pdb_loc: Union[str, list, atomium.structures.Model],
                        is_seq_1.unsqueeze(2),
                        is_struct_0.unsqueeze(2)), dim=2)
     feats_res = feats_res[u,v]
-    feats_all = th.cat((feats_at.float().squeeze(), feats_res), dim=-1)
-    return u, v, feats_all, res_per_res
+    # geometic and others
+    phi, psi = dihedral(res_n, res_ca, res_c)
+    chi1, chi2 = dihedral(res_ca, res_cb, res_cg)
+    #breakpoint()
+    nfeats = th.stack((phi, psi, chi1, chi2), dim=1).squeeze(-1)
+    efeats = th.cat((feats_at.float().squeeze(), feats_res), dim=-1)
+    return u, v, efeats, nfeats, res_per_res
 
 
 def calc_struct_properties(resname: List[str],
@@ -509,3 +527,6 @@ def edge_embedding_to_3d_tensor(u,v,emb):
     contacts[u,v] = emb_normed
     return contacts
 
+if __name__ == "__main__":
+    file = "../tests/data/3sxw.pdb.gz"
+    _, _, _, _ = read_struct(file, "A", t=7)
