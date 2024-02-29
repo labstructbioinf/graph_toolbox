@@ -14,7 +14,7 @@ from .params import (ACIDS_MAP_DEF,
                      NFEATNAME)
 
 _PDBCHAIN_COL = 'pdb_chain'
-_SEQUENCE_COL = 'dssp_sequence'
+_SEQUENCE_COL = 'sequence'
 
 
 class GraphObjectEerror(Exception):
@@ -70,7 +70,7 @@ class GraphData:
         nfeats=nfeats,
         sequence=sequence)
     
-    def to_dgl(self, validate: bool = True) -> dgl.graph:
+    def to_dgl(self, validate: bool = False) -> dgl.graph:
         """
         create graph from data
         Args:
@@ -98,8 +98,10 @@ class GraphData:
         find gaps in Ca-Ca sequential connections
         """
         featid = self.featname.index('self')
-        feat = feat[:, featid].sum()
+        breakpoint()
+        feat = self.feats[:, featid].sum()
         if feat <= self.feats.shape[0]:
+            print(f"feat: {feat} is below threshold {self.feats.shape[0]}, path: {self.path}") 
             raise GraphObjectEerror("some CA-CA sequence connections are above given threshold")
 
     def to_edgedf(self) -> pd.DataFrame:
