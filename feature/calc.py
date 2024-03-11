@@ -41,6 +41,14 @@ aa_trans = {
     'PTR': 'TYR',  # Phosphotyrosine
     # ...
 }
+@th.jit.script
+def distance(xyz1: th.Tensor, xyz2: Optional[th.Tensor] = None):
+
+    if xyz2 is not None:
+        return th.cdist(xyz1, xyz2)
+    else:
+        return (xyz1.unsqueeze(0) - xyz1.unsqueeze(1)).pow(2).sum(-1).sqrt()
+
 
 @th.jit.script
 def dihedral(n: th.Tensor, ca: th.Tensor, c: th.Tensor):
@@ -234,7 +242,7 @@ def read_struct(pdb_loc: str,
     at_eps = [EPSILON[n] for n in name_base]
     # convert to tensors
     res_ca = th.FloatTensor(ca_xyz)
-    res_dist = th.cdist(res_ca, res_ca)
+    res_dist = distance(res_ca)
     res_cb = th.FloatTensor(cb_xyz)
     res_cg = th.FloatTensor(cg_xyz)
     res_c = th.FloatTensor(c_xyz)
@@ -275,7 +283,7 @@ def read_struct(pdb_loc: str,
                 is_at_hb_a[i] = True
     is_at_vdw  = [True if at in {'C', 'S'} else False for at in name_base]
     at_xyz = th.FloatTensor(atoms)
-    at_dist = th.cdist(at_xyz, at_xyz)
+    at_dist = distance(at_xyz)
     at_id = th.LongTensor(at_eps)
     sigma = th.FloatTensor(at_vdw)
     at_is_side = th.BoolTensor(is_side_chain)
@@ -322,18 +330,15 @@ def read_struct(pdb_loc: str,
     feats_at = th.cat([efeat_list[e].sum((0,1), keepdim=True) for e in uv], dim=0)
     th.clamp(feats_at, min=0, max=1, out=feats_at)
     # gather residue level feature, such as edge criteria
-    cb_dist = th.cdist(res_cb, res_cb)
+    cb_dist = distance(res_cb)
     res_id_short = th.arange(0, num_residues)
     is_seq = th.abs(res_id_short.unsqueeze(0) - res_id_short.unsqueeze(1))
     is_self = is_seq == 0
     is_seq_0 = is_seq == 1
     is_seq_1 = is_seq > 5
     is_struct_0 = is_seq > 1
-    is_caca_cbcb = cb_dist < res_dist
-    is_caca_cbcb = is_caca_cbcb[~th.isnan(is_caca_cbcb).any(axis=1)]
     
-    feats_res = th.stack((is_caca_cbcb,
-                        is_self,
+    feats_res = th.stack((is_self,
                        is_seq_0,
                        is_seq_1,
                        is_struct_0), dim=2)
@@ -341,38 +346,12 @@ def read_struct(pdb_loc: str,
     # geometic and others
     phi, psi = dihedral(res_n, res_ca, res_c)
     chi1, chi2 = dihedral(res_ca, res_cb, res_cg)
+    distmx = th.stack((res_dist, cb_dist), dim=2)
     nfeats = th.stack((phi, psi, chi1, chi2), dim=1).squeeze(-1)
     efeats = th.cat((feats_at.float().squeeze(), feats_res), dim=-1)
-    return u, v, efeats, nfeats, res_per_res
+    return u, v, efeats, nfeats, res_per_res, distmx
 
 
-def calc_named(pdb_loc: str, chain, t: float = 9) -> pd.DataFrame:
-    '''
-    calculate structural features as dataframe
-    Params:
-        pdb_loc (str) path to pdb file
-        chain (str or None) chain to use if None all chains are used
-        t (float) threshold to ca-ca distance
-    '''
-    
-    structure = atomium.open(pdb_loc).model
-    pdb_ids = atomium_chain_pdb_list(structure, raw_id=True)
-    residues = atomium_select(structure, None, pdb_ids)
-    u, v, feats = read_struct(residues, chain, t)
-
-    dataframe = pd.DataFrame(data=feats.numpy(), columns=FEATNAME)
-    dataframe['res1'] = u.numpy()
-    dataframe['res2'] = v.numpy()
-    return dataframe
-
-def calculate_interactions(path_pdb: str, t: float = 9) -> pd.DataFrame:
-
-    structdata = read_pdb_full(path_pdb)
-    u, v, feats = calc_struct_properties(*structdata, t=t)
-    dataframe = pd.DataFrame(data=feats.numpy(), columns=FEATNAME)
-    dataframe['res1'] = u.numpy()
-    dataframe['res2'] = v.numpy()
-    return dataframe
 
 def edge_embedding_to_3d_tensor(u,v,emb):
     num_nodes = u.max()+1

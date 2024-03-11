@@ -21,7 +21,7 @@ def remove_cache():
 ])
 def test_calc(pdb):
 
-    u, v, feats, nfeats, struct_sequence = read_struct(pdb)
+    d = read_struct(pdb)
 
 
 @pytest.mark.parametrize("pdb", [
