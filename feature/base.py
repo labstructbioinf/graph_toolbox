@@ -39,12 +39,12 @@ class GraphData:
                     'feats', 
                     'nfeats', 
                     'featname', 
-                    'nfeatname', 
-                    'distancemx',
+                    'nfeatname',
                     'sequence', 
-                    'dssp']
+                    'dssp',
+                    'distancemx']
 
-    def __init__(self, metadata, u, v, feats, nfeats, sequence, distancemx, dssp, **kwargs):
+    def __init__(self, metadata, u, v, feats, nfeats, sequence, dssp, distancemx, **kwargs):
         self.metadata = metadata
         self.sequence = sequence
         self.u = u
@@ -159,7 +159,7 @@ class GraphData:
     def load(cls, path: str) -> "GraphData":
         assert os.path.isfile(path)
         data = torch.load(path)
-        return cls(**data)
+        return cls(**{k: data[k] for k in cls.__savekeys__})
 
     def save(self, path: str):
 
