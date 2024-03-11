@@ -40,13 +40,12 @@ class GraphData:
                     'nfeats', 
                     'featname', 
                     'nfeatname', 
-                    'distancemx', 
-                    'dssp', 
-                    'ca_threshold']
+                    'distancemx',
+                    'sequence', 
+                    'dssp']
 
-    def __init__(self, path, metadata, u, v, feats, nfeats, sequence, distancemx, dssp, **kwargs):
+    def __init__(self, metadata, u, v, feats, nfeats, sequence, distancemx, dssp, **kwargs):
         self.metadata = metadata
-        self.path = path
         self.sequence = sequence
         self.u = u
         self.v = v
