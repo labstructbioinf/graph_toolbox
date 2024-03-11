@@ -34,6 +34,8 @@ class GraphData:
     dssp: List[str]
     ca_threshold: float = 7
     __savekeys__ = ['metadata', 
+                    'u',
+                    'v',
                     'feats', 
                     'nfeats', 
                     'featname', 
