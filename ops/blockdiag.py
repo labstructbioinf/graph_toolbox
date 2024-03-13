@@ -6,9 +6,7 @@ import torch
 
 
 class SparseBlokDiag:
-
     blocks: List[torch.Tensor]
-
     def __init__(self, blocks: List[torch.Tensor]):
 
         assert isinstance(blocks, list)
@@ -26,8 +24,11 @@ class SparseBlokDiag:
         raise NotImplementedError()
 
 
-    def from_graph(self, bg: dgl.DGLgraph):
-        
+    def from_graph(self, bg: dgl.DGLgraph) -> torch.Tensor:
+        '''
+        Returns:
+            sparse_coo_tensor
+        '''
         num_edges = bg.batch_num_edges(bg)
         u, v = bg.edges()
         sparse = torch.sparse_coo_tensor(size=(self.size, self.size))
@@ -49,6 +50,12 @@ class SparseBlokDiag:
         sparse.values = values
         return sparse
     
-def sparse_from_graph(a, bg: dgl.DGLGraph):
-
-    pass
+    def sparse_from_graph(self, a: torch.Tensor, bg: dgl.DGLGraph) -> torch.Tensor:
+        '''
+        convert `a` to sparse tensor matching edges from `bg`
+        '''
+        u, v = bg.edges()
+        indices = torch.stack((u, v), dim=1)
+        values = a[u, v]
+        sparse = torch.sparse_coo_tensor(indices=indices, values=values, size=(self.size, self.size))
+        return sparse
