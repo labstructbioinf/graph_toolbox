@@ -84,7 +84,6 @@ HYDROGEN_DONOR = {
 
 SS_MAP_EXT : Dict[str, int] = {
     'H' : 0,
-    'H2' : 0,
     'B' : 1,
     'G' : 2,
     'I' : 3,
@@ -93,11 +92,9 @@ SS_MAP_EXT : Dict[str, int] = {
     '-' : 6,
     'C' : 6,
     ' ' : 6,
-    'E1' : 7,
-    'E2' : 8,
     '?' : 6,
-    'H1' : 9,
-    'H3' : 10
+    'E' : 7,
+
 }
 
 amino_acid_residues_extended_upper = [

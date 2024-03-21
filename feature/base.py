@@ -106,6 +106,8 @@ class GraphData:
         else:
             raise TypeError(f'invalid aa sequence letter: {self.sequence[0]} dictionary should be in one ore three letter code')
         # dssp 
+        # dssp to one letter code
+        dsspasint = [letter[:1] for letter in self.dssp]
         dsspasint = [SS_MAP_EXT[letter] for letter in self.dssp]    
         seqasint = torch.LongTensor(seqasint)
         dsspasint = torch.LongTensor(dsspasint)
