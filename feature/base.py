@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, Optional
 from dataclasses import dataclass
 import pickle
 
@@ -58,7 +58,7 @@ class GraphData:
 
 
     @classmethod
-    def from_pdb(cls, path: str, metadata: dict = dict(), ca_threshold: float = 7, **kwargs) -> "GraphData":
+    def from_pdb(cls, path: str, pdbchain: Optional[str] = None, metadata: dict = dict(), ca_threshold: float = 7, **kwargs) -> "GraphData":
         """
         metadata columns used
         `pdb_chain`, `sequence`, `dssp`
@@ -68,7 +68,7 @@ class GraphData:
             metadata[key] = val
         metadata['ca_threshold'] = float(ca_threshold)
         metadata['path'] = path
-        pdbchain = metadata.get(_PDBCHAIN_COL, None)
+        metadata['pdbchain'] = pdbchain
         sequence = metadata.get(_SEQUENCE_COL, None)
         dssp = metadata.get(_DSSP_COL, None)
         
