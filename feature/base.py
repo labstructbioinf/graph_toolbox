@@ -15,6 +15,7 @@ from .params import (ACIDS_MAP_DEF,
                      FEATNAME,
                      NFEATNAME)
 
+
 _PDBCHAIN_COL = 'pdb_chain'
 _SEQUENCE_COL = 'sequence'
 _DSSP_COL = 'dssp'
@@ -26,7 +27,7 @@ class GraphObjectEerror(Exception):
 
 
 class GraphData:
-    __version__ = "0.14a"
+    __version__ = "0.14hdf"
     metadata: dict = dict()
     efeats: torch.Tensor
     nfeats: torch.Tensor
@@ -36,15 +37,12 @@ class GraphData:
     sequence: List[str]
     dssp: List[str]
     ca_threshold: float = 7
-    __savekeys__ = ['metadata', 
+    __savekeys__ = ['code', 
                     'u',
                     'v',
                     'efeats', 
                     'nfeats', 
-                    'efeatname', 
-                    'nfeatname',
                     'sequence', 
-                    'dssp',
                     'distancemx']
 
     def __init__(self, metadata, u, v, efeats, nfeats, sequence, dssp, distancemx, **kwargs):
@@ -184,6 +182,24 @@ class GraphData:
         data = pd.DataFrame(feats, columns=self.nfeatname)
         data['residue'] = self.sequence
         return data
+
+    def to_hdf5(self) -> dict:
+        
+        if len(self.sequence[0]) == 3:
+            seqasint = [ACIDS_MAP_DEF3[res] for res in self.sequence]
+        elif len(self.sequence[0]) == 1:
+            seqasint = [ACIDS_MAP_DEF[res] for res in self.sequence]
+        else:
+            raise TypeError(f'invalid aa sequence letter: {self.sequence[0]} dictionary should be in one ore three letter code')
+        seqasint = torch.LongTensor(seqasint)
+
+        return {'u': self.u.numpy(),
+                'v': self.v.numpy(),
+                'efeats': self.efeats.numpy(),
+                'nfeats': self.nfeats.numpy(),
+                'distancemx': self.distancemx.numpy(),
+                'sequence': seqasint.numpy()}
+
 
     @classmethod
     def load(cls, path: str) -> "GraphData":
