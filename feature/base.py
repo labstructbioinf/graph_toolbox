@@ -7,7 +7,8 @@ import pandas as pd
 import torch
 import dgl
 
-from .calc import read_struct
+from .calc import read_struct, strucfeats
+
 from .params import (ACIDS_MAP_DEF,
                      ACIDS_MAP_DEF3,
                      SS_MAP_EXT,
@@ -22,12 +23,14 @@ _DSSP_COL = 'dssp'
 class GraphObjectEerror(Exception):
     pass
 
+
+
 class GraphData:
-    __version__ = "0.13"
+    __version__ = "0.14a"
     metadata: dict = dict()
-    feats: torch.Tensor
+    efeats: torch.Tensor
     nfeats: torch.Tensor
-    featname: List[str] = FEATNAME
+    efeatname: List[str] = FEATNAME
     nfeatname: List[str] = NFEATNAME
     distancemx: torch.Tensor
     sequence: List[str]
@@ -36,29 +39,32 @@ class GraphData:
     __savekeys__ = ['metadata', 
                     'u',
                     'v',
-                    'feats', 
+                    'efeats', 
                     'nfeats', 
-                    'featname', 
+                    'efeatname', 
                     'nfeatname',
                     'sequence', 
                     'dssp',
                     'distancemx']
 
-    def __init__(self, metadata, u, v, feats, nfeats, sequence, dssp, distancemx, **kwargs):
+    def __init__(self, metadata, u, v, efeats, nfeats, sequence, dssp, distancemx, **kwargs):
         self.metadata = metadata
         self.sequence = sequence
         self.u = u
         self.v = v
         self.nfeats = nfeats
-        self.feats = feats
-        self.featname
+        self.efeats = efeats
         self.kwargs = kwargs
         self.distancemx = distancemx
         self.dssp = dssp
 
 
     @classmethod
-    def from_pdb(cls, path: str, pdbchain: Optional[str] = None, metadata: dict = dict(), ca_threshold: float = 7, **kwargs) -> "GraphData":
+    def from_pdb(cls, path: str, 
+                 pdbchain: Optional[str] = None,
+                 metadata: dict = dict(),
+                 ca_threshold: float = 7,
+                 **kwargs) -> "GraphData":
         """
         metadata columns used
         `pdb_chain`, `sequence`, `dssp`
@@ -69,25 +75,13 @@ class GraphData:
         metadata['ca_threshold'] = float(ca_threshold)
         metadata['path'] = path
         metadata['pdbchain'] = pdbchain
-        sequence = metadata.get(_SEQUENCE_COL, None)
-        dssp = metadata.get(_DSSP_COL, None)
         
-        u, v, feats, nfeats, struct_sequence, distancemx = read_struct(path, chain=pdbchain, t = ca_threshold)
-        if _SEQUENCE_COL in metadata:
-            sequence = metadata[_SEQUENCE_COL]
-        else:
-            sequence = struct_sequence
-        return cls(path=path,
-         metadata=metadata,
-        u=u,
-        v=v,
-        feats=feats,
-        nfeats=nfeats,
-        sequence=sequence,
-        dssp=dssp,
-        distancemx=distancemx)
+        structdata = read_struct(path, chain=pdbchain, t = ca_threshold)
+        return cls(path=path, metadata=metadata, **structdata._asdict(), dssp="")
     
-    def to_dgl(self, validate: bool = False, with_dist: bool = False) -> dgl.graph:
+    def to_dgl(self, validate: bool = False,
+                with_dist: bool = False,
+                with_dssp: bool = False) -> dgl.graph:
         """
         create graph from data
         node schema: `seq` (1, ) long, `dssp` (1, long), `angles` (4, ) float
@@ -107,16 +101,50 @@ class GraphData:
             raise TypeError(f'invalid aa sequence letter: {self.sequence[0]} dictionary should be in one ore three letter code')
         # dssp 
         # dssp to one letter code
-        dsspasint = [letter[:1] for letter in self.dssp]
-        dsspasint = [SS_MAP_EXT[letter] for letter in self.dssp]    
+        if with_dssp:
+            dsspasint = [letter[:1] for letter in self.dssp]
+            dsspasint = [SS_MAP_EXT[letter] for letter in self.dssp]    
+            dsspasint = torch.LongTensor(dsspasint)
         seqasint = torch.LongTensor(seqasint)
-        dsspasint = torch.LongTensor(dsspasint)
+        
 
         g = dgl.graph((self.u, self.v))
         g.ndata['seq'] = seqasint
-        g.ndata['dssp'] = dsspasint
+        if with_dssp:
+            g.ndata['dssp'] = dsspasint
         g.ndata['angles'] = self.nfeats
-        g.edata['f'] = self.feats
+        g.edata['f'] = self.efeats
+        if with_dist:
+            return g, self.distancemx
+        else:
+            return g
+        
+    def to_dgl_angles(self, validate: bool = False,
+                with_dist: bool = False) -> dgl.graph:
+        """
+        create graph from data
+        node schema: `seq` (1, ) long, `dssp` (1, long), `angles` (4, ) float
+        edge schema `f` (11, ) bool
+        Args:
+            validate: (bool) if True validate against ca-ca discon
+        Returns:
+            dgl.graph
+        """
+        if validate:
+            self.validate_ca_gaps()
+        if len(self.sequence[0]) == 3:
+            seqasint = [ACIDS_MAP_DEF3[res] for res in self.sequence]
+        elif len(self.sequence[0]) == 1:
+            seqasint = [ACIDS_MAP_DEF[res] for res in self.sequence]
+        else:
+            raise TypeError(f'invalid aa sequence letter: {self.sequence[0]} dictionary should be in one ore three letter code')
+
+        seqasint = torch.LongTensor(seqasint)
+
+        g = dgl.graph((self.u, self.v))
+        g.ndata['seq'] = seqasint
+        g.ndata['angles'] = self.nfeats
+        g.edata['f'] = self.efeats
         if with_dist:
             return g, self.distancemx
         else:
@@ -126,19 +154,19 @@ class GraphData:
         """
         find gaps in Ca-Ca sequential connections
         """
-        featid = self.featname.index('self')
+        featid = self.efeatname.index('self')
         breakpoint()
-        feat = self.feats[:, featid].sum()
-        if feat <= self.feats.shape[0]:
-            print(f"feat: {feat} is below threshold {self.feats.shape[0]}, path: {self.path}") 
+        feat = self.efeats[:, featid].sum()
+        if feat <= self.efeats.shape[0]:
+            print(f"feat: {feat} is below threshold {self.efeats.shape[0]}, path: {self.path}") 
             raise GraphObjectEerror("some CA-CA sequence connections are above given threshold")
 
     def to_edgedf(self) -> pd.DataFrame:
 
-        feats = self.feats.numpy()
-        if feats.shape[1] != len(self.featname):
-            raise GraphObjectEerror(f'number of edge features is diffrent then featnames {feats.shape} and {self.featname}')
-        data = pd.DataFrame(feats, columns=self.featname)
+        feats = self.efeats.numpy()
+        if feats.shape[1] != len(self.efeatname):
+            raise GraphObjectEerror(f'number of edge features is diffrent then featnames {feats.shape} and {self.efeatname}')
+        data = pd.DataFrame(feats, columns=self.efeatname)
         # source aa residue
         u = [self.sequence[ui] for ui in self.u.tolist()]
         v = [self.sequence[vi] for vi in self.v.tolist()]

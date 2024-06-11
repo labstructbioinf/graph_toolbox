@@ -1,5 +1,7 @@
 '''script for calculating residue - residue interactions'''
+import os
 from typing import Union, Tuple, List, Optional
+from collections import namedtuple
 
 import sys
 sys.path.append('..')
@@ -26,6 +28,8 @@ try:
     from .. parse import read_pdb_full
 except ImportError as e:
     print(e)
+
+strucfeats = namedtuple('structfeats', ['u', 'v', 'efeats', 'nfeats', 'sequence', 'distancemx'])
 
 aa_trans = {
     'MSE': 'MET',  # Methionine Selenomethionine
@@ -142,11 +146,25 @@ def residue_atoms_criteria(iterator, criteria_dict : dict, storage: list):
                 storage[i] = True
     return storage
 
-def read_struct(pdb_loc: str,
+
+def read_handle(pdbloc: str) -> PandasPdb:
+
+    assert os.path.isfile(pdbloc)
+    atoms = data.df['ATOM']
+    hetatm = data.df['HETATM']
+    hetatm = hetatm[hetatm.residue_name.isin(aa_trans)]
+    hetatm['residue_name'] = hetatm['residue_name'].apply(map_aa_name)
+    #hetatm = hetatm[hetatm.residue_name == 'MSE']
+    data = pd.concat([atoms, hetatm], axis=0)
+    data.sort_values(['chain_id','residue_number', 'atom_number'], inplace=True)
+    return data
+
+
+def read_struct(pdbloc: str,
                 chain: Optional[str] = None,
                 t: Optional[float] = None,
                 indices_to_read: Optional[list] = None
-                ) -> Tuple[th.Tensor]:
+                ) -> strucfeats:
     '''
     params:
         pdb_loc (str, set, atomium.Model): path to structure, atomium selection 
@@ -154,14 +172,14 @@ def read_struct(pdb_loc: str,
         t (float): contact distance threshold
     return u, v for feats
     '''
-    if isinstance(pdb_loc, str):
-        data = PandasPdb().read_pdb(pdb_loc)#
+    if isinstance(pdbloc, str):
+        data = PandasPdb().read_pdb(pdbloc)#
     # elif isinstance(pdb_loc, atomium.structures.Model):
     #     data = pdb_loc.residues()
     # elif isinstance(pdb_loc, list):
     #     data = pdb_loc
     else:
-        raise KeyError(f'wrong pdb_loc type {type(pdb_loc)}')
+        raise KeyError(f'wrong pdb_loc type {type(pdbloc)}')
     if not isinstance(t, (int, float, type(None))):
         raise ValueError(f'threshold must be number or None, given: {type(t)}')
     else: 
@@ -346,10 +364,13 @@ def read_struct(pdb_loc: str,
     # geometic and others
     phi, psi = dihedral(res_n, res_ca, res_c)
     chi1, chi2 = dihedral(res_ca, res_cb, res_cg)
-    distmx = th.stack((res_dist, cb_dist), dim=2)
-    nfeats = th.stack((phi, psi, chi1, chi2), dim=1).squeeze(-1)
-    efeats = th.cat((feats_at.float().squeeze(), feats_res), dim=-1)
-    return u, v, efeats, nfeats, res_per_res, distmx
+    
+    
+    return strucfeats(u, v, 
+                      efeats = th.cat((feats_at.float().squeeze(), feats_res), dim=-1),
+                      nfeats = th.stack((phi, psi, chi1, chi2), dim=1).squeeze(-1),
+                      sequence=res_per_res,
+                      distancemx=th.stack((res_dist, cb_dist), dim=2))
 
 
 

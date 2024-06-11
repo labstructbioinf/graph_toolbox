@@ -16,7 +16,7 @@ class SparseBlokDiag:
 
         assert isinstance(blocks, (list, tuple))
         self.blocks = blocks
-        # unack from fastai
+        # unpack from fastai
         if len(self.blocks[0]) > 1:
             self.blocks = list(itertools.chain(*self.blocks))
         self.sizelist = [blk.shape[0] for blk in self.blocks]
