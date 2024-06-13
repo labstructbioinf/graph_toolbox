@@ -21,9 +21,8 @@ _SEQUENCE_COL = 'sequence'
 _DSSP_COL = 'dssp'
 
 
-class GraphObjectEerror(Exception):
+class GraphObjectError(Exception):
     pass
-
 
 
 class GraphData:
@@ -45,8 +44,8 @@ class GraphData:
                     'sequence', 
                     'distancemx']
 
-    def __init__(self, metadata, u, v, efeats, nfeats, sequence, dssp, distancemx, **kwargs):
-        self.metadata = metadata
+    def __init__(self, code, u, v, efeats, nfeats, sequence, distancemx, **kwargs):
+        self.code = code
         self.sequence = sequence
         self.u = u
         self.v = v
@@ -54,28 +53,25 @@ class GraphData:
         self.efeats = efeats
         self.kwargs = kwargs
         self.distancemx = distancemx
-        self.dssp = dssp
 
 
     @classmethod
     def from_pdb(cls, path: str, 
-                 pdbchain: Optional[str] = None,
-                 metadata: dict = dict(),
+                 code: str,
                  ca_threshold: float = 7,
                  **kwargs) -> "GraphData":
         """
-        metadata columns used
-        `pdb_chain`, `sequence`, `dssp`
+        from pdb file
         """
-        assert os.path.isfile(path)
-        for key, val in kwargs.items():
-            metadata[key] = val
-        metadata['ca_threshold'] = float(ca_threshold)
-        metadata['path'] = path
-        metadata['pdbchain'] = pdbchain
-        
-        structdata = read_struct(path, chain=pdbchain, t = ca_threshold)
-        return cls(path=path, metadata=metadata, **structdata._asdict(), dssp="")
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f'missing .pdb file for: {path}')
+        try:
+            structdata = read_struct(path, chain=None, t = ca_threshold)
+        except Exception as e:
+            raise GraphObjectError(e)
+        if {'UNK', '?'} in structdata.sequence:
+            raise GraphObjectError(f"invalid aa in sequence {structdata.sequence}")
+        return cls(path=path, code=code, **structdata._asdict())
     
     def to_dgl(self, validate: bool = False,
                 with_dist: bool = False,
@@ -183,7 +179,7 @@ class GraphData:
         data['residue'] = self.sequence
         return data
 
-    def to_hdf5(self) -> dict:
+    def to_h5(self) -> dict:
         
         if len(self.sequence[0]) == 3:
             seqasint = [ACIDS_MAP_DEF3[res] for res in self.sequence]
