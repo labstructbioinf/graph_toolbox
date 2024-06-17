@@ -15,18 +15,17 @@ class H5Handle:
         'compression' : 'lzf',
         'dtype': np.float32
         }
-    groupname: str = 'embeddings'
-    preffix: str = 'emb_'
+    reqkeys = {'u', 'v', 'nfeats', 'efeats', 'sequence', 'distancemx'}
+    numkeys = len(reqkeys)
+    error_group: str = "errors"
     direct_read: bool = True
     filename: str
-    wait_time: float = 0.1
     def __init__(self, filename : Union[str, os.PathLike]):
         self.filename = filename
 # https://github.com/harvardnlp/botnet-detection/blob/master/graph_data_storage.md
     def write_graph(self, g: GraphData):
 
         pdb, chain, hnum = g.code.split("_")
-
         with h5py.File(self.filename, "a") as hf:
             pdbgr = hf.require_group(pdb)
             if g.code not in pdbgr:
@@ -55,6 +54,11 @@ class H5Handle:
             g.ndata['angles'] = nfeats
             g.edata['f'] = efeats
             return g, distancemx
+        
+    def write_corrupted(self, code):
+        with h5py.File(self.filename, 'a') as hf:
+            pdbgr = hf.require_group(self.error_group)
+            pdbgr.create_dataset(str(code), data=h5py.Empty("f"))
 
     @property
     def pdbs(self) -> list:
@@ -65,7 +69,19 @@ class H5Handle:
     @property
     def codes(self) -> list:
         with h5py.File(self.filename, 'r') as hf:
-            codes = list()
-            for group in hf:
-                codes.extend(list(hf[group].keys()))
-        return codes
+            valid_codes = list()
+            pdbs = hf.keys()
+            
+            for pdb in pdbs:
+                hfpdb = hf[pdb]
+                codes = hfpdb.keys()
+                for code in codes:
+                    hfcode = hfpdb[code]
+                    if len(self.reqkeys & hfcode.keys()) == self.reqkeys:
+                        valid_codes.append(code)
+        return valid_codes
+    @property
+    def invalid(self) -> list:
+        with h5py.File(self.filename, 'a') as hf:
+            error_grp = hf.require_group(self.error_group)
+            return list(error_grp.keys())

@@ -4,6 +4,7 @@ from typing import Union, Tuple, List, Optional
 from collections import namedtuple
 
 import sys
+from dataclasses import dataclass, asdict
 sys.path.append('..')
 import pandas as pd
 pd.options.mode.chained_assignment = None  # default='warn'
@@ -28,6 +29,19 @@ try:
     from .. parse import read_pdb_full
 except ImportError as e:
     print(e)
+
+@dataclass
+class StructFeats:
+    u: th.Tensor
+    v: th.Tensor
+    efeats: th.Tensor
+    nfeats: th.Tensor
+    sequence: List[str]
+    distancemx: th.Tensor
+
+    def asdict(self):
+        return asdict(self)
+
 
 strucfeats = namedtuple('structfeats', ['u', 'v', 'efeats', 'nfeats', 'sequence', 'distancemx'])
 
@@ -164,7 +178,7 @@ def read_struct(pdbloc: str,
                 chain: Optional[str] = None,
                 t: Optional[float] = None,
                 indices_to_read: Optional[list] = None
-                ) -> strucfeats:
+                ) -> StructFeats:
     '''
     params:
         pdb_loc (str, set, atomium.Model): path to structure, atomium selection 
@@ -366,7 +380,7 @@ def read_struct(pdbloc: str,
     chi1, chi2 = dihedral(res_ca, res_cb, res_cg)
     
     
-    return strucfeats(u, v, 
+    return StructFeats(u, v, 
                       efeats = th.cat((feats_at.float().squeeze(), feats_res), dim=-1),
                       nfeats = th.stack((phi, psi, chi1, chi2), dim=1).squeeze(-1),
                       sequence=res_per_res,

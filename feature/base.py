@@ -19,7 +19,7 @@ from .params import (ACIDS_MAP_DEF,
 _PDBCHAIN_COL = 'pdb_chain'
 _SEQUENCE_COL = 'sequence'
 _DSSP_COL = 'dssp'
-
+_INVALID_AA: set = {'UNK', '?', 'SEC'}
 
 class GraphObjectError(Exception):
     pass
@@ -69,9 +69,9 @@ class GraphData:
             structdata = read_struct(path, chain=None, t = ca_threshold)
         except Exception as e:
             raise GraphObjectError(e)
-        if {'UNK', '?'} in structdata.sequence:
+        if _INVALID_AA & set(structdata.sequence):
             raise GraphObjectError(f"invalid aa in sequence {structdata.sequence}")
-        return cls(path=path, code=code, **structdata._asdict())
+        return cls(path=path, code=code, **structdata.asdict())
     
     def to_dgl(self, validate: bool = False,
                 with_dist: bool = False,
@@ -153,13 +153,13 @@ class GraphData:
         feat = self.efeats[:, featid].sum()
         if feat <= self.efeats.shape[0]:
             print(f"feat: {feat} is below threshold {self.efeats.shape[0]}, path: {self.path}") 
-            raise GraphObjectEerror("some CA-CA sequence connections are above given threshold")
+            raise GraphObjectError("some CA-CA sequence connections are above given threshold")
 
     def to_edgedf(self) -> pd.DataFrame:
 
         feats = self.efeats.numpy()
         if feats.shape[1] != len(self.efeatname):
-            raise GraphObjectEerror(f'number of edge features is diffrent then featnames {feats.shape} and {self.efeatname}')
+            raise GraphObjectError(f'number of edge features is diffrent then featnames {feats.shape} and {self.efeatname}')
         data = pd.DataFrame(feats, columns=self.efeatname)
         # source aa residue
         u = [self.sequence[ui] for ui in self.u.tolist()]
@@ -174,7 +174,7 @@ class GraphData:
 
         feats = self.nfeats.numpy()
         if feats.shape[1] != len(self.nfeatname):
-            raise GraphObjectEerror(f'number of node features is different then featnames {feats.shape} and {self.nfeatname}')
+            raise GraphObjectError(f'number of node features is different then featnames {feats.shape} and {self.nfeatname}')
         data = pd.DataFrame(feats, columns=self.nfeatname)
         data['residue'] = self.sequence
         return data
