@@ -21,38 +21,40 @@ class H5Handle:
     direct_read: bool = True
     filename: str
     def __init__(self, filename : Union[str, os.PathLike]):
+        if not os.path.isfile(filename):
+            with h5py.File(filename, "w") as hf:
+                pass
         self.filename = filename
+
 # https://github.com/harvardnlp/botnet-detection/blob/master/graph_data_storage.md
     def write_graph(self, g: GraphData):
 
-        pdb, chain, hnum = g.code.split("_")
+        group = self.group_from_code(g.code)
         with h5py.File(self.filename, "a") as hf:
-            pdbgr = hf.require_group(pdb)
-            if g.code not in pdbgr:
-                pdbsubgr = pdbgr.require_group(g.code)
-                for key, val in g.to_h5().items():
-                    pdbsubgr.create_dataset(name=key, data=val)
+            pdbgr = hf.require_group(group)
+            for key, val in g.to_h5().items():
+                pdbgr.create_dataset(name=key, data=val)
 
             
     def read_graph(self, code):
         '''
         if size is none read all record from start to the end
         '''
-
-        pdb, chain, hnum = code.split("_")
         with h5py.File(self.filename, 'r') as hf:
-            
-            pdbsubgr = hf[pdb][code]
+            group = self.group_from_code(code)
+            pdbsubgr = hf[group]
+            try:
+                u, v = torch.from_numpy(pdbsubgr['u'][:]), torch.from_numpy(pdbsubgr['v'][:])
+                sequence = torch.from_numpy(pdbsubgr['sequence'][:])
+                nfeats, efeats = torch.from_numpy(pdbsubgr['nfeats'][:]), torch.from_numpy(pdbsubgr['efeats'][:])
+                distancemx = torch.from_numpy(pdbsubgr['distancemx'][:])
 
-            u, v = torch.from_numpy(pdbsubgr['u'][:]), torch.from_numpy(pdbsubgr['v'][:])
-            sequence = torch.from_numpy(pdbsubgr['sequence'][:])
-            nfeats, efeats = torch.from_numpy(pdbsubgr['nfeats'][:]), torch.from_numpy(pdbsubgr['efeats'][:])
-            distancemx = torch.from_numpy(pdbsubgr['distancemx'][:])
-
-            g = dgl.graph((u, v))
-            g.ndata['seq'] = sequence
-            g.ndata['angles'] = nfeats
-            g.edata['f'] = efeats
+                g = dgl.graph((u, v))
+                g.ndata['seq'] = sequence
+                g.ndata['angles'] = nfeats
+                g.edata['f'] = efeats
+            except KeyError as e:
+                raise KeyError(f'missing {e} for gr {group}')
             return g, distancemx
         
     def write_corrupted(self, code):
@@ -60,6 +62,16 @@ class H5Handle:
             pdbgr = hf.require_group(self.error_group)
             pdbgr.create_dataset(str(code), data=h5py.Empty("f"))
 
+    def group_from_code(self, code):
+        """
+        locate h5 group based on code
+        """
+        pdb, _, _ = code.split("_")
+        preffix = pdb[:2]
+        #group = f"{preffix}/{pdb}/{code}"
+        group = f"{pdb}/{code}"
+        return group
+    
     @property
     def pdbs(self) -> list:
         with h5py.File(self.filename, 'r') as hf:
@@ -70,14 +82,14 @@ class H5Handle:
     def codes(self) -> list:
         with h5py.File(self.filename, 'r') as hf:
             valid_codes = list()
-            pdbs = hf.keys()
-            
+            pdbs = set(hf.keys())
+            if self.error_group in pdbs: pdbs.remove(self.error_group)
             for pdb in pdbs:
                 hfpdb = hf[pdb]
                 codes = hfpdb.keys()
                 for code in codes:
                     hfcode = hfpdb[code]
-                    if len(self.reqkeys & hfcode.keys()) == self.reqkeys:
+                    if len(self.reqkeys & hfcode.keys()) == self.numkeys:
                         valid_codes.append(code)
         return valid_codes
     @property
@@ -85,3 +97,47 @@ class H5Handle:
         with h5py.File(self.filename, 'a') as hf:
             error_grp = hf.require_group(self.error_group)
             return list(error_grp.keys())
+
+
+
+class EmbH5Handle:
+    reqkeys = {'emb'}
+    numkeys = len(reqkeys)
+    error_group: str = "errors"
+    direct_read: bool = True
+    filename: str
+    def __init__(self, filename : Union[str, os.PathLike]):
+        self.filename = filename
+        if not os.path.isfile(self.filename):
+            os.makedirs(os.path.dirname(self.filename), exist_ok=True)
+            with h5py.File(self.filename, "w") as hf:
+                pass
+            
+# https://github.com/harvardnlp/botnet-detection/blob/master/graph_data_storage.md
+    def write(self, emb, code):
+        pdb, chain, hnum = code.split("_")
+        with h5py.File(self.filename, "a") as hf:
+            pdbgr = hf.require_group(pdb)
+            if code not in pdbgr:
+                pdbsubgr = pdbgr.require_group(code)
+                pdbsubgr.create_dataset('emb', data=emb.numpy())
+                
+    def read(self, code) -> torch.Tensor:
+        pdb, chain, hnum = code.split("_")
+        with h5py.File(self.filename, "a") as hf:
+            pdbgr = hf.require_group(pdb)
+            if code in pdbgr:
+                pdbsubgr = pdbgr.require_group(code)
+                return torch.from_numpy(pdbsubgr['emb'][:])
+            else:
+                raise FileNotFoundError(f"missing {code}")
+            
+    @property
+    def codes(self) -> list:
+        with h5py.File(self.filename, 'r') as hf:
+            valid_codes = list()
+            pdbs = set(hf.keys())
+            for pdb in pdbs:
+                hfpdb = hf[pdb]
+                valid_codes += list(hfpdb.keys())
+            return valid_codes

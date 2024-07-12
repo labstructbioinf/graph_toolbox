@@ -86,17 +86,17 @@ def dihedral(n: th.Tensor, ca: th.Tensor, c: th.Tensor):
     b1 = ca - c
     b2 = c.roll(1) - n.roll(1)
     b3 = n.roll(1) - ca.roll(1)
-    n1 = th.cross(b1, b2)
+    n1 = th.linalg.cross(b1, b2)
     n1 /= LA.vector_norm(n1, ord=2, dim=1, keepdim=True)
-    n2 = th.cross(b2, b3)
+    n2 = th.linalg.cross(b2, b3)
     n2 /= LA.vector_norm(n2, ord=2, dim=1, keepdim=True)
     # normalize b2 
     #b2 /= LA.vector_norm(b2, ord=2, dim=1, keepdim=True)
     #m1 = th.cross(n1, b2)
     #x = (n1 * n2).sum(1)
     #y = (m1 * n2).sum(1)
-    b_cross23 = th.cross(b2, b3)
-    b_cross12 = th.cross(b1, b2)
+    b_cross23 = th.linalg.cross(b2, b3)
+    b_cross12 = th.linalg.cross(b1, b2)
     b2_norm = LA.vector_norm(b2, ord=2, dim=1, keepdim=True)
     b_cross1223 = (b_cross12*b_cross23).sum(1, keepdim=True).sqrt()
     b21 = b2_norm*(b1*b_cross23).sum(1, keepdim=True).sqrt()
@@ -187,24 +187,20 @@ def read_struct(pdbloc: str,
     return u, v for feats
     '''
     if isinstance(pdbloc, str):
-        data = PandasPdb().read_pdb(pdbloc)#
-    # elif isinstance(pdb_loc, atomium.structures.Model):
-    #     data = pdb_loc.residues()
-    # elif isinstance(pdb_loc, list):
-    #     data = pdb_loc
-    else:
-        raise KeyError(f'wrong pdb_loc type {type(pdbloc)}')
+        data = PandasPdb().read_pdb(pdbloc)
+        atoms = data.df['ATOM']
+        hetatm = data.df['HETATM']
+        hetatm = hetatm[hetatm.residue_name.isin(aa_trans)]
+        hetatm['residue_name'] = hetatm['residue_name'].apply(map_aa_name)
+        data = pd.concat([atoms, hetatm], axis=0)
+    elif isinstance(pdbloc, pd.DataFrame):
+        data = pdbloc
     if not isinstance(t, (int, float, type(None))):
         raise ValueError(f'threshold must be number or None, given: {type(t)}')
     else: 
         if isinstance(t, (int, float)) and t < 5:
             print('dumb threshold')
-    atoms = data.df['ATOM']
-    hetatm = data.df['HETATM']
-    hetatm = hetatm[hetatm.residue_name.isin(aa_trans)]
-    hetatm['residue_name'] = hetatm['residue_name'].apply(map_aa_name)
-    #hetatm = hetatm[hetatm.residue_name == 'MSE']
-    data = pd.concat([atoms, hetatm], axis=0)
+
     data.sort_values(['chain_id','residue_number', 'atom_number'], inplace=True)
     
     if chain is not None:
@@ -222,8 +218,9 @@ def read_struct(pdbloc: str,
     is_side_chain = list()
     res_at_num = list()
     skip_c = 0
-    for resi, (_, residue) in enumerate(data.groupby(['chain_id', 'residue_number'])):
-        missing_cd = True
+    # remove alt located atoms
+    mask = ~data.alt_loc.isin(invalid_location)
+    for resi, (_, residue) in enumerate(data[mask].groupby(['chain_id', 'residue_number'])):
         missing_cg = True
         missing_cb = True
         missing_ca = True
@@ -351,6 +348,7 @@ def read_struct(pdbloc: str,
     # residue level features
     #breakpoint()
     efeat_list = list()
+
     first_dim_split = feats.split(res_at_num, 0)
     for i in range(len(res_at_num)):
         efeat_list.extend(list(first_dim_split[i].split(res_at_num, 1)))
@@ -368,6 +366,7 @@ def read_struct(pdbloc: str,
     is_self = is_seq == 0
     is_seq_0 = is_seq == 1
     is_seq_1 = is_seq > 5
+    # turns usually consider 3 to 5
     is_struct_0 = is_seq > 1
     
     feats_res = th.stack((is_self,
@@ -378,7 +377,6 @@ def read_struct(pdbloc: str,
     # geometic and others
     phi, psi = dihedral(res_n, res_ca, res_c)
     chi1, chi2 = dihedral(res_ca, res_cb, res_cg)
-    
     
     return StructFeats(u, v, 
                       efeats = th.cat((feats_at.float().squeeze(), feats_res), dim=-1),

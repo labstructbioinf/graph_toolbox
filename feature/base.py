@@ -2,6 +2,7 @@ import os
 from typing import List, Optional
 from dataclasses import dataclass
 import pickle
+from biopandas.pdb import PandasPdb
 
 import pandas as pd
 import torch
@@ -63,7 +64,7 @@ class GraphData:
         """
         from pdb file
         """
-        if not os.path.isfile(path):
+        if (not isinstance(path, pd.DataFrame)) and (not os.path.isfile(path)):
             raise FileNotFoundError(f'missing .pdb file for: {path}')
         try:
             structdata = read_struct(path, chain=None, t = ca_threshold)
@@ -73,6 +74,14 @@ class GraphData:
             raise GraphObjectError(f"invalid aa in sequence {structdata.sequence}")
         return cls(path=path, code=code, **structdata.asdict())
     
+    @classmethod
+    def from_h5(cls, path: str, key: str):
+
+        atoms = pd.read_hdf(path, key=key, mode='r')
+        pdb = PandasPdb()
+        pdb.df['ATOMS'] = atoms
+        return cls.from_pdb(pdb, )
+
     def to_dgl(self, validate: bool = False,
                 with_dist: bool = False,
                 with_dssp: bool = False) -> dgl.graph:
