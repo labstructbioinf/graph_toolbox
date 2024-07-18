@@ -8,7 +8,7 @@ import pandas as pd
 import torch
 import dgl
 
-from .calc import read_struct, strucfeats
+from .calc import read_struct, StructFeats
 
 from .params import (ACIDS_MAP_DEF,
                      ACIDS_MAP_DEF3,

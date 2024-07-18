@@ -1,7 +1,6 @@
 '''script for calculating residue - residue interactions'''
 import os
 from typing import Union, Tuple, List, Optional
-from collections import namedtuple
 
 import sys
 from dataclasses import dataclass, asdict
@@ -18,7 +17,7 @@ from .params import (BACKBONE,
                      SALT_BRIDGE_C1,
                      SALT_BRIDGE_C2,
                      CHARGE,
-                    SIGMA,
+                     SIGMA,
                      EPSILON,
                     HYDROGEN_ACCEPTOR,
                     HYDROGEN_DONOR,
@@ -42,8 +41,6 @@ class StructFeats:
     def asdict(self):
         return asdict(self)
 
-
-strucfeats = namedtuple('structfeats', ['u', 'v', 'efeats', 'nfeats', 'sequence', 'distancemx'])
 
 aa_trans = {
     'MSE': 'MET',  # Methionine Selenomethionine
@@ -69,44 +66,93 @@ def distance(xyz1: th.Tensor, xyz2: Optional[th.Tensor] = None):
 
 
 @th.jit.script
+def dotproduct(xyz1, xyz2):
+    return (xyz1 * xyz2).sum(-1, keepdim=True)
+
+
+#@th.jit.script
+def calc_single_dihedral(x1, x2, x3, x4) -> th.Tensor:
+    """
+    Returns:
+        angle: [num_atoms, 1]
+    """
+    # https://en.wikipedia.org/wiki/Dihedral_angle
+    b1 = x2 - x1
+    b2 = x3 - x2
+    b3 = x4 - x3
+    cross12 = th.linalg.cross(b1, b2)
+    #cross12 /= LA.vector_norm(cross12, ord=2, dim=1, keepdim=True)
+    cross23 = th.linalg.cross(b2, b3)
+    #cross23 /= LA.vector_norm(cross23, ord=2, dim=1, keepdim=True)
+    b2norm = LA.vector_norm(b2, ord=2, dim=1, keepdim=True)
+    cross_1223 = th.linalg.cross(cross12, cross23)
+    dot_1223 = dotproduct(cross12, cross23)
+    #dot_b2cross1223 = dotproduct(b2, cross_1223)
+    #print(b2norm.shape, dot_1223.shape, cross_1223.shape)
+    #angle = th.atan2( dot_b2cross1223,  b2norm*dot_1223)
+    angle = th.atan2( b2norm * b2norm* dotproduct(b1, cross23), dot_1223)
+    return angle
+
+
+def calculate_dihedral(p1, p2, p3, p4):
+    """Calculate dihedral angle between four points in space using PyTorch - gpt -4o version"""
+    b1 = p2 - p1
+    b2 = p3 - p2
+    b3 = p4 - p3
+
+    # Normalize b2 so that it does not influence the magnitude of vector rejections
+    b2 /= th.norm(b2, dim=1, keepdim=True)
+
+    # Vector rejections
+    v = b1 - th.sum(b1 * b2, dim=1, keepdim=True) * b2
+    w = b3 - th.sum(b3 * b2, dim=1, keepdim=True) * b2
+
+    # Calculate the angle
+    x = th.sum(v * w, dim=1)
+    y = th.sum(th.cross(b2, v) * w, dim=1)
+    return th.atan2(y, x).unsqueeze(1)
+
+def mdlike(p1, p2, p3, p4):
+    # equations are the same as here: https://github.com/mdtraj/mdtraj/blob/master/mdtraj/geometry/dihedral.py
+    b1 = p2 - p1
+    b2 = p3 - p2
+    b3 = p4 - p3
+
+    c1 = th.cross(b2, b3, dim=1)
+    c2 = th.cross(b1, b2, dim=1)
+
+    p1 = (b1 * c1).sum(-1)
+    p1 = p1 * (b2 * b2).sum(-1).sqrt()
+    p2 = (c1 * c2).sum(-1)
+
+    return th.atan2(p1, p2).unsqueeze(-1)
+
+
+#@th.jit.script
 def dihedral(n: th.Tensor, ca: th.Tensor, c: th.Tensor):
     """
     Args:
         nitrogen: torch.Tensor [num_atoms, xyz]
         carbon_alpha: torch.Tensor
         carbon: torch.Tensor
-    N - [ CA - C - N - CA ] - C
-             b1  b2   b3  vectors 
-               n1   n2    planes
+        C - N - CA - C - N
+         b1  b2   b3  vectors 
+           n1   n2  planes
+        phi: C-N-CA-C
+        psi: N-CA-C-N
     Returns:
         torch.FloatTensor: phi
         torch.FloatTensor: psi
     """
 
-    b1 = ca - c
-    b2 = c.roll(1) - n.roll(1)
-    b3 = n.roll(1) - ca.roll(1)
-    n1 = th.linalg.cross(b1, b2)
-    n1 /= LA.vector_norm(n1, ord=2, dim=1, keepdim=True)
-    n2 = th.linalg.cross(b2, b3)
-    n2 /= LA.vector_norm(n2, ord=2, dim=1, keepdim=True)
-    # normalize b2 
-    #b2 /= LA.vector_norm(b2, ord=2, dim=1, keepdim=True)
-    #m1 = th.cross(n1, b2)
-    #x = (n1 * n2).sum(1)
-    #y = (m1 * n2).sum(1)
-    b_cross23 = th.linalg.cross(b2, b3)
-    b_cross12 = th.linalg.cross(b1, b2)
-    b2_norm = LA.vector_norm(b2, ord=2, dim=1, keepdim=True)
-    b_cross1223 = (b_cross12*b_cross23).sum(1, keepdim=True).sqrt()
-    b21 = b2_norm*(b1*b_cross23).sum(1, keepdim=True).sqrt()
-    dihedral = th.atan2(b21, b_cross1223)
-    phi = dihedral
-    psi = dihedral.roll(1)
-    # fill borders
-    phi[0] = 0
-    psi[0] = 0
-    return phi, psi
+    phi = mdlike(c.roll(-1), n, ca, c)
+    psi = mdlike(n, ca, c, n.roll(1))
+    omega = mdlike(ca.roll(-1), n.roll(-1), c, ca)
+    phi[0] = 0.0
+    psi[-1] = 0.0
+    omega[-1] = 0.0
+
+    return th.cat((phi, psi, omega), dim=1)
 
 
 def map_aa_name(resname):
@@ -123,8 +169,6 @@ nan_type = float('nan')
 nan_xyz = (nan_type, nan_type, nan_type)
 atom_id = {ch : i for i, ch in enumerate(CHARGE.keys())}
 EPS = th.Tensor([78*1e-2]) # unit Farad / angsterm
-CLIP_MAX = th.FloatTensor([1,1,1,1,1,1,1,10,10,10,10,1,1,1,1,1,1])
-CLIP_MIN = th.FloatTensor([0,0,0,0,0,0,0,-10,-10,-10,1e-20,0,0,0,0,0,0])
 side_chain_atom_names = ['CA', 'C', 'N', 'O']
 invalid_location = {'B','C','D'}
 
@@ -174,7 +218,7 @@ def read_handle(pdbloc: str) -> PandasPdb:
     return data
 
 
-def read_struct(pdbloc: str,
+def read_struct(pdbloc: str | pd.DataFrame,
                 chain: Optional[str] = None,
                 t: Optional[float] = None,
                 indices_to_read: Optional[list] = None
@@ -200,9 +244,6 @@ def read_struct(pdbloc: str,
     else: 
         if isinstance(t, (int, float)) and t < 5:
             print('dumb threshold')
-
-    data.sort_values(['chain_id','residue_number', 'atom_number'], inplace=True)
-    
     if chain is not None:
         data = data.loc[data['chain_id'] == chain].copy()
         if data.shape[0] == 0:
@@ -217,22 +258,24 @@ def read_struct(pdbloc: str,
     res_per_res = list()
     is_side_chain = list()
     res_at_num = list()
-    skip_c = 0
+    # remove ligands like DD1, dd2
+    mask = ~data.atom_name.str.startswith('D')
     # remove alt located atoms
-    mask = ~data.alt_loc.isin(invalid_location)
-    for resi, (_, residue) in enumerate(data[mask].groupby(['chain_id', 'residue_number'])):
+    mask &= ~data.alt_loc.isin(invalid_location)
+    # remove insertions
+    mask &= data.insertion == ""
+    data = data[mask].sort_values(by=['chain_id', 'residue_number']).copy()
+    for resi, (_, residue) in enumerate(data.groupby(['chain_id', 'residue_number'])):
         missing_cg = True
         missing_cb = True
         missing_ca = True
+        missing_c = True
         num_atoms = residue.shape[0]
         res_at_num.append(num_atoms)
         residues.append(resi)
         res_per_res.append(residue.iloc[0].residue_name)
         for _, atom in residue.iterrows():
             n = atom.atom_name
-            if atom.alt_loc in invalid_location:
-                skip_c += 1
-                continue
             if atom.atom_name == 'CA':
                 ca_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
                 missing_ca = False
@@ -241,6 +284,7 @@ def read_struct(pdbloc: str,
                 missing_cb = False
             elif atom.atom_name == "C":
                 c_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
+                missing_c = False
             elif atom.atom_name == 'N':
                 n_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
             elif atom.atom_name == 'CG':
@@ -252,12 +296,10 @@ def read_struct(pdbloc: str,
             residues_name.append(atom.residue_name)
             name.append(n)
             is_side_chain.append(True if n in side_chain_atom_names else False)   
-        if missing_cb:
-            cb_xyz.append(nan_xyz)
-        if missing_ca:
-            ca_xyz.append(nan_xyz)
-        if missing_cg:
-            cg_xyz.append(nan_xyz)
+        if missing_cb: cb_xyz.append(nan_xyz)
+        if missing_ca: ca_xyz.append(nan_xyz)
+        if missing_cg: cg_xyz.append(nan_xyz)
+        if missing_c: c_xyz.append(nan_xyz)
 
     # assign parameters to atoms
     num_atoms = len(name)
@@ -273,7 +315,7 @@ def read_struct(pdbloc: str,
     res_ca = th.FloatTensor(ca_xyz)
     res_dist = distance(res_ca)
     res_cb = th.FloatTensor(cb_xyz)
-    res_cg = th.FloatTensor(cg_xyz)
+    #res_cg = th.FloatTensor(cg_xyz)
     res_c = th.FloatTensor(c_xyz)
     res_n = th.FloatTensor(n_xyz)
     # print(minlength, chainlength)
@@ -375,12 +417,11 @@ def read_struct(pdbloc: str,
                        is_struct_0), dim=2)
     feats_res = feats_res[u,v]
     # geometic and others
-    phi, psi = dihedral(res_n, res_ca, res_c)
-    chi1, chi2 = dihedral(res_ca, res_cb, res_cg)
+    backbone_dih = dihedral(res_n, res_ca, res_c)
     
     return StructFeats(u, v, 
                       efeats = th.cat((feats_at.float().squeeze(), feats_res), dim=-1),
-                      nfeats = th.stack((phi, psi, chi1, chi2), dim=1).squeeze(-1),
+                      nfeats = backbone_dih,
                       sequence=res_per_res,
                       distancemx=th.stack((res_dist, cb_dist), dim=2))
 

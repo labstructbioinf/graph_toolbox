@@ -11,6 +11,9 @@ from .base import GraphData
 
 
 class H5Handle:
+    '''
+    for graphs
+    '''
     dataset_attrs = {
         'compression' : 'lzf',
         'dtype': np.float32
@@ -29,12 +32,14 @@ class H5Handle:
 # https://github.com/harvardnlp/botnet-detection/blob/master/graph_data_storage.md
     def write_graph(self, g: GraphData):
 
+
         group = self.group_from_code(g.code)
         with h5py.File(self.filename, "a") as hf:
             pdbgr = hf.require_group(group)
+            pdbgr.attrs['is_valid'] = False
             for key, val in g.to_h5().items():
                 pdbgr.create_dataset(name=key, data=val)
-
+            pdbgr.attrs['is_valid'] = True
             
     def read_graph(self, code):
         '''
@@ -57,6 +62,12 @@ class H5Handle:
                 raise KeyError(f'missing {e} for gr {group}')
             return g, distancemx
         
+    def read_key(self, code: str, key: str):
+
+        with h5py.File(self.filename, 'r') as hf:
+            group = self.group_from_code(code)
+            return hf[group][key][:]
+
     def write_corrupted(self, code):
         with h5py.File(self.filename, 'a') as hf:
             pdbgr = hf.require_group(self.error_group)
@@ -69,7 +80,7 @@ class H5Handle:
         pdb, _, _ = code.split("_")
         preffix = pdb[:2]
         #group = f"{preffix}/{pdb}/{code}"
-        group = f"{pdb}/{code}"
+        group = f"{preffix}/{pdb}/{code}"
         return group
     
     @property
@@ -83,15 +94,14 @@ class H5Handle:
         with h5py.File(self.filename, 'r') as hf:
             valid_codes = list()
             pdbs = set(hf.keys())
-            if self.error_group in pdbs: pdbs.remove(self.error_group)
             for pdb in pdbs:
                 hfpdb = hf[pdb]
                 codes = hfpdb.keys()
                 for code in codes:
-                    hfcode = hfpdb[code]
-                    if len(self.reqkeys & hfcode.keys()) == self.numkeys:
+                    if hfpdb[code].attrs['is_valid']:
                         valid_codes.append(code)
         return valid_codes
+    
     @property
     def invalid(self) -> list:
         with h5py.File(self.filename, 'a') as hf:
