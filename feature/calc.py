@@ -77,6 +77,7 @@ def calc_single_dihedral(x1, x2, x3, x4) -> th.Tensor:
         angle: [num_atoms, 1]
     """
     # https://en.wikipedia.org/wiki/Dihedral_angle
+    # https://en.wikipedia.org/w/index.php?title=Dihedral_angle&oldid=689165217#Angle_between_three_vectors
     b1 = x2 - x1
     b2 = x3 - x2
     b3 = x4 - x3
@@ -84,19 +85,21 @@ def calc_single_dihedral(x1, x2, x3, x4) -> th.Tensor:
     #cross12 /= LA.vector_norm(cross12, ord=2, dim=1, keepdim=True)
     cross23 = th.linalg.cross(b2, b3)
     #cross23 /= LA.vector_norm(cross23, ord=2, dim=1, keepdim=True)
-    b2norm = LA.vector_norm(b2, ord=2, dim=1, keepdim=True)
+    b2 /= th.pow(b2, 2).sum(-1, keepdim=True).sqrt()
     cross_1223 = th.linalg.cross(cross12, cross23)
     dot_1223 = dotproduct(cross12, cross23)
     #dot_b2cross1223 = dotproduct(b2, cross_1223)
     #print(b2norm.shape, dot_1223.shape, cross_1223.shape)
     #angle = th.atan2( dot_b2cross1223,  b2norm*dot_1223)
-    angle = th.atan2( b2norm * b2norm* dotproduct(b1, cross23), dot_1223)
+    angle = th.atan2( dotproduct(b2,cross_1223), dot_1223)
+    if angle.ndim == 1:
+        angle = angle.unsqueeze(-1)
     return angle
 
 
 def calculate_dihedral(p1, p2, p3, p4):
     """Calculate dihedral angle between four points in space using PyTorch - gpt -4o version"""
-    b1 = p2 - p1
+    b1 = -(p2 - p1)
     b2 = p3 - p2
     b3 = p4 - p3
 
@@ -104,28 +107,13 @@ def calculate_dihedral(p1, p2, p3, p4):
     b2 /= th.norm(b2, dim=1, keepdim=True)
 
     # Vector rejections
-    v = b1 - th.sum(b1 * b2, dim=1, keepdim=True) * b2
-    w = b3 - th.sum(b3 * b2, dim=1, keepdim=True) * b2
+    v = b1 - dotproduct(b1, b2) * b2
+    w = b3 - dotproduct(b3, b2) * b2
 
     # Calculate the angle
-    x = th.sum(v * w, dim=1)
-    y = th.sum(th.cross(b2, v) * w, dim=1)
-    return th.atan2(y, x).unsqueeze(1)
-
-def mdlike(p1, p2, p3, p4):
-    # equations are the same as here: https://github.com/mdtraj/mdtraj/blob/master/mdtraj/geometry/dihedral.py
-    b1 = p2 - p1
-    b2 = p3 - p2
-    b3 = p4 - p3
-
-    c1 = th.cross(b2, b3, dim=1)
-    c2 = th.cross(b1, b2, dim=1)
-
-    p1 = (b1 * c1).sum(-1)
-    p1 = p1 * (b2 * b2).sum(-1).sqrt()
-    p2 = (c1 * c2).sum(-1)
-
-    return th.atan2(p1, p2).unsqueeze(-1)
+    x = dotproduct(v, w)
+    y = dotproduct(th.cross(b2, v, dim=1), w)
+    return th.atan2(y, x)
 
 
 #@th.jit.script
@@ -145,12 +133,12 @@ def dihedral(n: th.Tensor, ca: th.Tensor, c: th.Tensor):
         torch.FloatTensor: psi
     """
 
-    phi = mdlike(c.roll(-1), n, ca, c)
-    psi = mdlike(n, ca, c, n.roll(1))
-    omega = mdlike(ca.roll(-1), n.roll(-1), c, ca)
-    phi[0] = 0.0
-    psi[-1] = 0.0
-    omega[-1] = 0.0
+    phi = calc_single_dihedral(c.roll(1, dims=0), n, ca, c)
+    psi = calc_single_dihedral(n, ca, c, n.roll(-1, dims=0))
+    omega = calc_single_dihedral(ca.roll(1, dims=0), n.roll(1, dims=0), c, ca)
+    phi[0] = float('nan')
+    psi[-1] = float('nan')
+    omega[0] = float('nan')
 
     return th.cat((phi, psi, omega), dim=1)
 
@@ -203,19 +191,6 @@ def residue_atoms_criteria(iterator, criteria_dict : dict, storage: list):
             if at in VDW_ATOMS[res]:
                 storage[i] = True
     return storage
-
-
-def read_handle(pdbloc: str) -> PandasPdb:
-
-    assert os.path.isfile(pdbloc)
-    atoms = data.df['ATOM']
-    hetatm = data.df['HETATM']
-    hetatm = hetatm[hetatm.residue_name.isin(aa_trans)]
-    hetatm['residue_name'] = hetatm['residue_name'].apply(map_aa_name)
-    #hetatm = hetatm[hetatm.residue_name == 'MSE']
-    data = pd.concat([atoms, hetatm], axis=0)
-    data.sort_values(['chain_id','residue_number', 'atom_number'], inplace=True)
-    return data
 
 
 def read_struct(pdbloc: str | pd.DataFrame,
@@ -304,7 +279,7 @@ def read_struct(pdbloc: str | pd.DataFrame,
     # assign parameters to atoms
     num_atoms = len(name)
     num_residues = len(res_per_res)
-    #print('skipped: ', skip_c)
+    res_number = th.LongTensor(residues)
 
     name_base = [n[0] for n in name]
     #at_charge = [CHARGE[n] for n in name_base]
@@ -416,9 +391,13 @@ def read_struct(pdbloc: str | pd.DataFrame,
                        is_seq_1,
                        is_struct_0), dim=2)
     feats_res = feats_res[u,v]
-    # geometic and others
+    # backbone dihedral angles
     backbone_dih = dihedral(res_n, res_ca, res_c)
-    
+    is_prev_res_seq = (res_number - res_number.roll(1)) == 1
+    is_prev_res_seq[0] = False
+    is_next_res_seq = res_id_short
+    raise ValueError()
+
     return StructFeats(u, v, 
                       efeats = th.cat((feats_at.float().squeeze(), feats_res), dim=-1),
                       nfeats = backbone_dih,
