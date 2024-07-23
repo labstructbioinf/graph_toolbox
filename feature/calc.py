@@ -8,8 +8,13 @@ sys.path.append('..')
 import pandas as pd
 pd.options.mode.chained_assignment = None  # default='warn'
 import torch as th
-from torch import linalg as LA
+
 from biopandas.pdb import PandasPdb
+
+from .numeric import (distance, 
+                     backbone_dihedral, 
+                     sidechain_dihedral)
+
 from .params import (BACKBONE,
                     HYDROPHOBIC,
                      AROMATIC,
@@ -22,12 +27,11 @@ from .params import (BACKBONE,
                     HYDROGEN_ACCEPTOR,
                     HYDROGEN_DONOR,
                     VDW_RADIUS,
-                    VDW_ATOMS)
-try:
-    from .. parse import atomium_select, atomium_chain_pdb_list
-    from .. parse import read_pdb_full
-except ImportError as e:
-    print(e)
+                    VDW_ATOMS,
+                    C_DELTA,
+                    C_GAMMA,
+                    aa_trans)
+
 
 @dataclass
 class StructFeats:
@@ -40,107 +44,6 @@ class StructFeats:
 
     def asdict(self):
         return asdict(self)
-
-
-aa_trans = {
-    'MSE': 'MET',  # Methionine Selenomethionine
-    'CYX': 'CYS',  # Cystine
-    'SEC': 'CYS',  # Selenocysteine
-    'PYL': 'LYS',  # Pyrrolysine
-    'ALM': 'ALA',  # Alanine with added methyl group
-    'CME': 'CYS',  # S,S-(2-hydroxyethyl)thiocysteine
-    'CSO': 'CYS',  # S-Hydroxycysteine
-    'OCS': 'CYS',  # Cysteic acid
-    'SEP': 'SER',  # Phosphoserine
-    'TPO': 'THR',  # Phosphothreonine
-    'PTR': 'TYR',  # Phosphotyrosine
-    # ...
-}
-@th.jit.script
-def distance(xyz1: th.Tensor, xyz2: Optional[th.Tensor] = None):
-
-    if xyz2 is not None:
-        return th.cdist(xyz1, xyz2)
-    else:
-        return (xyz1.unsqueeze(0) - xyz1.unsqueeze(1)).pow(2).sum(-1).sqrt()
-
-
-@th.jit.script
-def dotproduct(xyz1, xyz2):
-    return (xyz1 * xyz2).sum(-1, keepdim=True)
-
-
-#@th.jit.script
-def calc_single_dihedral(x1, x2, x3, x4) -> th.Tensor:
-    """
-    Returns:
-        angle: [num_atoms, 1]
-    """
-    # https://en.wikipedia.org/wiki/Dihedral_angle
-    # https://en.wikipedia.org/w/index.php?title=Dihedral_angle&oldid=689165217#Angle_between_three_vectors
-    b1 = x2 - x1
-    b2 = x3 - x2
-    b3 = x4 - x3
-    cross12 = th.linalg.cross(b1, b2)
-    #cross12 /= LA.vector_norm(cross12, ord=2, dim=1, keepdim=True)
-    cross23 = th.linalg.cross(b2, b3)
-    #cross23 /= LA.vector_norm(cross23, ord=2, dim=1, keepdim=True)
-    b2 /= th.pow(b2, 2).sum(-1, keepdim=True).sqrt()
-    cross_1223 = th.linalg.cross(cross12, cross23)
-    dot_1223 = dotproduct(cross12, cross23)
-    #dot_b2cross1223 = dotproduct(b2, cross_1223)
-    #print(b2norm.shape, dot_1223.shape, cross_1223.shape)
-    #angle = th.atan2( dot_b2cross1223,  b2norm*dot_1223)
-    angle = th.atan2( dotproduct(b2,cross_1223), dot_1223)
-    if angle.ndim == 1:
-        angle = angle.unsqueeze(-1)
-    return angle
-
-
-def calculate_dihedral(p1, p2, p3, p4):
-    """Calculate dihedral angle between four points in space using PyTorch - gpt -4o version"""
-    b1 = -(p2 - p1)
-    b2 = p3 - p2
-    b3 = p4 - p3
-
-    # Normalize b2 so that it does not influence the magnitude of vector rejections
-    b2 /= th.norm(b2, dim=1, keepdim=True)
-
-    # Vector rejections
-    v = b1 - dotproduct(b1, b2) * b2
-    w = b3 - dotproduct(b3, b2) * b2
-
-    # Calculate the angle
-    x = dotproduct(v, w)
-    y = dotproduct(th.cross(b2, v, dim=1), w)
-    return th.atan2(y, x)
-
-
-#@th.jit.script
-def dihedral(n: th.Tensor, ca: th.Tensor, c: th.Tensor):
-    """
-    Args:
-        nitrogen: torch.Tensor [num_atoms, xyz]
-        carbon_alpha: torch.Tensor
-        carbon: torch.Tensor
-        C - N - CA - C - N
-         b1  b2   b3  vectors 
-           n1   n2  planes
-        phi: C-N-CA-C
-        psi: N-CA-C-N
-    Returns:
-        torch.FloatTensor: phi
-        torch.FloatTensor: psi
-    """
-
-    phi = calc_single_dihedral(c.roll(1, dims=0), n, ca, c)
-    psi = calc_single_dihedral(n, ca, c, n.roll(-1, dims=0))
-    omega = calc_single_dihedral(ca.roll(1, dims=0), n.roll(1, dims=0), c, ca)
-    phi[0] = float('nan')
-    psi[-1] = float('nan')
-    omega[0] = float('nan')
-
-    return th.cat((phi, psi, omega), dim=1)
 
 
 def map_aa_name(resname):
@@ -160,18 +63,6 @@ EPS = th.Tensor([78*1e-2]) # unit Farad / angsterm
 side_chain_atom_names = ['CA', 'C', 'N', 'O']
 invalid_location = {'B','C','D'}
 
-
-def fill_missing_part_by_index(missing_index: int,
-                               biopandas_df: str,
-                               chain: Optional[str] = None):
-    hetdf = biopandas_df.df['HETATM'] if chain is None else biopandas_df.df['HETATM'].loc[biopandas_df.df['HETATM']['chain_id'] == chain]
-    missing_df = hetdf[hetdf['residue_number'] == missing_index]
-    if missing_df.empty:
-        raise KeyError(f"missing residue {missing_index} not found")
-    # convert miss to df
-    missing_df['record_name'] = 'ATOM'
-    missing_df['residue_name'] = missing_df['residue_name'].apply(lambda x: aa_trans[x] if x in aa_trans.keys() else x)
-    return missing_df
 
 def is_atom_in_group(atoms: List[str], group: set, size: int) -> th.BoolTensor:
     arr = th.zeros(size, dtype=th.bool)
@@ -227,7 +118,7 @@ def read_struct(pdbloc: str | pd.DataFrame,
         data = data.loc[data['residue_number'].isin(indices_to_read)].copy()
     atoms, name = list(), list()
     ca_xyz, cb_xyz = list(), list()
-    cg_xyz = list()
+    cg_xyz, cd_xyz = list(), list()
     c_xyz, n_xyz = list(), list()
     residues, residues_name = list(), list()
     res_per_res = list()
@@ -244,6 +135,8 @@ def read_struct(pdbloc: str | pd.DataFrame,
         missing_cg = True
         missing_cb = True
         missing_ca = True
+        missing_cg = True
+        missing_cd = True
         missing_c = True
         num_atoms = residue.shape[0]
         res_at_num.append(num_atoms)
@@ -262,9 +155,12 @@ def read_struct(pdbloc: str | pd.DataFrame,
                 missing_c = False
             elif atom.atom_name == 'N':
                 n_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
-            elif atom.atom_name == 'CG':
+            elif atom.atom_name in C_GAMMA:
                 missing_cg = False
                 cg_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
+            elif atom.atom_name in C_DELTA:
+                missing_cd = False
+                cd_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
             elif len(n) == 3:
                 n = n[:2]
             atoms.append((atom.x_coord, atom.y_coord, atom.z_coord))
@@ -274,6 +170,7 @@ def read_struct(pdbloc: str | pd.DataFrame,
         if missing_cb: cb_xyz.append(nan_xyz)
         if missing_ca: ca_xyz.append(nan_xyz)
         if missing_cg: cg_xyz.append(nan_xyz)
+        if missing_cd: cd_xyz.append(nan_xyz)
         if missing_c: c_xyz.append(nan_xyz)
 
     # assign parameters to atoms
@@ -290,6 +187,8 @@ def read_struct(pdbloc: str | pd.DataFrame,
     res_ca = th.FloatTensor(ca_xyz)
     res_dist = distance(res_ca)
     res_cb = th.FloatTensor(cb_xyz)
+    res_cg = th.FloatTensor(cg_xyz)
+    res_cd = th.FloatTensor(cd_xyz)
     #res_cg = th.FloatTensor(cg_xyz)
     res_c = th.FloatTensor(c_xyz)
     res_n = th.FloatTensor(n_xyz)
@@ -336,7 +235,7 @@ def read_struct(pdbloc: str | pd.DataFrame,
     # hbonds acceptor donors
     at_is_hba = th.BoolTensor(is_at_hb_a) | th.BoolTensor(is_at_hb_ac)
     at_is_hbd = th.BoolTensor(is_at_hb_d) | th.BoolTensor(is_at_hb_ad)
-    #vdw
+    # vdw
     at_is_vdw = th.BoolTensor(is_at_vdw) | th.BoolTensor(is_at_vdw_other)
     # set inverse of the atom self distance to zero to avoid nan/inf when summing
     sigma_radii = (sigma.view(-1, 1) + sigma.view(1, -1))
@@ -391,16 +290,20 @@ def read_struct(pdbloc: str | pd.DataFrame,
                        is_seq_1,
                        is_struct_0), dim=2)
     feats_res = feats_res[u,v]
-    # backbone dihedral angles
-    backbone_dih = dihedral(res_n, res_ca, res_c)
-    is_prev_res_seq = (res_number - res_number.roll(1)) == 1
+    # dihedral angles
+    backbone_dih = backbone_dihedral(res_n, res_ca, res_c)
+    sidechain_dih = sidechain_dihedral(res_n, res_ca, res_cb, res_cg)
+    # backbone diheral angles does not make sens when sequence is discontinious
+    is_prev_res_seq = (res_number - res_number.roll(1)) != 1
+    is_next_res_seq = (res_number - res_number.roll(-1)) != 1
     is_prev_res_seq[0] = False
-    is_next_res_seq = res_id_short
-    raise ValueError()
+    is_next_res_seq[0] = False
+    backbone_dih[is_prev_res_seq, 0] = float('nan')
+    backbone_dih[is_next_res_seq, 1] = float('nan')
 
     return StructFeats(u, v, 
                       efeats = th.cat((feats_at.float().squeeze(), feats_res), dim=-1),
-                      nfeats = backbone_dih,
+                      nfeats = th.cat((backbone_dih, sidechain_dih), dim=-1),
                       sequence=res_per_res,
                       distancemx=th.stack((res_dist, cb_dist), dim=2))
 

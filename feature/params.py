@@ -15,7 +15,9 @@ FEATNAME = [
     'is_struct'
 ]
 NFEATNAME = ['psi', 'phi', 'chi1', 'chi2']
-
+# source: http://www.mlb.co.jp/linux/science/garlic/doc/commands/dihedrals.html
+C_GAMMA = {"CG", "CG1", 'OG', 'OG1', 'SG'}
+C_DELTA = {"CD", "OD1", "ND1", "SD"}
 BACKBONE = {"CA", "C", "N", "O"}
 HYDROPHOBIC = {'ALA', 'VAL', 'LEU', 'ILE', 'MET', 'PHE', 'TRP', 'RPO', 'TYR'}
 AROMATIC = {'TRP', 'TYR', 'PHE'}
@@ -133,6 +135,20 @@ aa_3to1 = {"ALA": "A",
            "TYR": "Y",
            "VAL": "V"}
 
+aa_trans = {
+    'MSE': 'MET',  # Methionine Selenomethionine
+    'CYX': 'CYS',  # Cystine
+    'SEC': 'CYS',  # Selenocysteine
+    'PYL': 'LYS',  # Pyrrolysine
+    'ALM': 'ALA',  # Alanine with added methyl group
+    'CME': 'CYS',  # S,S-(2-hydroxyethyl)thiocysteine
+    'CSO': 'CYS',  # S-Hydroxycysteine
+    'OCS': 'CYS',  # Cysteic acid
+    'SEP': 'SER',  # Phosphoserine
+    'TPO': 'THR',  # Phosphothreonine
+    'PTR': 'TYR',  # Phosphotyrosine
+    # ...
+}
 ACIDS_ORDER : str = amino_acid_residues_extended_upper
 ACIDS_MAP_DEF3 = {acid : nb for  nb, acid in enumerate(aa_3to1)}
 ACIDS_3TO1 = aa_3to1
