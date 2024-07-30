@@ -14,7 +14,7 @@ FEATNAME = [
     'is_seq_not', 
     'is_struct'
 ]
-NFEATNAME = ['psi', 'phi', 'chi1', 'chi2']
+NFEATNAME = ['psi', 'phi','omega', 'chi1', 'chi2']
 # source: http://www.mlb.co.jp/linux/science/garlic/doc/commands/dihedrals.html
 C_GAMMA = {"CG", "CG1", 'OG', 'OG1', 'SG'}
 C_DELTA = {"CD", "OD1", "ND1", "SD"}

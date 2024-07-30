@@ -292,12 +292,13 @@ def read_struct(pdbloc: str | pd.DataFrame,
     feats_res = feats_res[u,v]
     # dihedral angles
     backbone_dih = backbone_dihedral(res_n, res_ca, res_c)
-    sidechain_dih = sidechain_dihedral(res_n, res_ca, res_cb, res_cg)
+    sidechain_dih = sidechain_dihedral(res_n, res_ca, res_cb, res_cg, res_cd)
     # backbone diheral angles does not make sens when sequence is discontinious
-    is_prev_res_seq = (res_number - res_number.roll(1)) != 1
-    is_next_res_seq = (res_number - res_number.roll(-1)) != 1
-    is_prev_res_seq[0] = False
-    is_next_res_seq[0] = False
+    is_prev_res_seq = (res_number - res_number.roll(1)).abs() != 1
+    is_next_res_seq = (res_number - res_number.roll(-1)).abs() != 1
+    #breakpoint()
+    #is_prev_res_seq[0] = False
+    #is_next_res_seq[0] = False
     backbone_dih[is_prev_res_seq, 0] = float('nan')
     backbone_dih[is_next_res_seq, 1] = float('nan')
 
