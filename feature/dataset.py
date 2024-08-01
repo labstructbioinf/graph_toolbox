@@ -32,7 +32,6 @@ class H5Handle:
 # https://github.com/harvardnlp/botnet-detection/blob/master/graph_data_storage.md
     def write_graph(self, g: GraphData):
 
-
         group = self.group_from_code(g.code)
         with h5py.File(self.filename, "a") as hf:
             pdbgr = hf.require_group(group)
@@ -41,7 +40,7 @@ class H5Handle:
                 pdbgr.create_dataset(name=key, data=val)
             pdbgr.attrs['is_valid'] = True
             
-    def read_graph(self, code):
+    def read_graph(self, code, with_dist=True):
         '''
         if size is none read all record from start to the end
         '''
@@ -52,7 +51,8 @@ class H5Handle:
                 u, v = torch.from_numpy(pdbsubgr['u'][:]), torch.from_numpy(pdbsubgr['v'][:])
                 sequence = torch.from_numpy(pdbsubgr['sequence'][:])
                 nfeats, efeats = torch.from_numpy(pdbsubgr['nfeats'][:]), torch.from_numpy(pdbsubgr['efeats'][:])
-                distancemx = torch.from_numpy(pdbsubgr['distancemx'][:])
+                if with_dist:
+                    distancemx = torch.from_numpy(pdbsubgr['distancemx'][:])
 
                 g = dgl.graph((u, v))
                 g.ndata['seq'] = sequence
@@ -60,7 +60,11 @@ class H5Handle:
                 g.edata['f'] = efeats
             except KeyError as e:
                 raise KeyError(f'missing {e} for gr {group}')
-            return g, distancemx
+            if with_dist:
+                return g, distancemx
+            else:
+                g
+        
         
     def read_key(self, code: str, key: str):
 
@@ -71,7 +75,7 @@ class H5Handle:
     def write_corrupted(self, code):
         with h5py.File(self.filename, 'a') as hf:
             pdbgr = hf.require_group(self.error_group)
-            pdbgr.create_dataset(str(code), data=h5py.Empty("f"))
+            pdbgr.attrs['is_valid'] = False
 
     def group_from_code(self, code):
         """
@@ -93,13 +97,16 @@ class H5Handle:
     def codes(self) -> list:
         with h5py.File(self.filename, 'r') as hf:
             valid_codes = list()
-            pdbs = set(hf.keys())
-            for pdb in pdbs:
-                hfpdb = hf[pdb]
-                codes = hfpdb.keys()
-                for code in codes:
-                    if hfpdb[code].attrs['is_valid']:
-                        valid_codes.append(code)
+            preffix = set(hf.keys())
+            for pre in preffix:
+                hfpdb = hf[pre]
+                pdbs = hfpdb.keys()
+                for pdb in pdbs:
+                    hfpdb = hf[pre][pdb]
+                    codes = hfpdb.keys()
+                    for code in codes:
+                        if hfpdb[code].attrs.get('is_valid', False):
+                            valid_codes.append(code)
         return valid_codes
     
     @property
@@ -128,10 +135,12 @@ class EmbH5Handle:
         pdb, chain, hnum = code.split("_")
         with h5py.File(self.filename, "a") as hf:
             pdbgr = hf.require_group(pdb)
+            pdbgr.attrs['is_valid'] = False
             if code not in pdbgr:
                 pdbsubgr = pdbgr.require_group(code)
                 pdbsubgr.create_dataset('emb', data=emb.numpy())
-                
+                pdbgr.attrs['is_valid'] = True
+
     def read(self, code) -> torch.Tensor:
         pdb, chain, hnum = code.split("_")
         with h5py.File(self.filename, "a") as hf:

@@ -55,7 +55,6 @@ class GraphData:
         self.kwargs = kwargs
         self.distancemx = distancemx
 
-
     @classmethod
     def from_pdb(cls, path: str, 
                  code: str,
@@ -70,6 +69,10 @@ class GraphData:
             structdata = read_struct(path, chain=None, t = ca_threshold)
         except Exception as e:
             raise GraphObjectError(e)
+        _seqlen = len(structdata.sequence)
+        _nodes = max(structdata.u.max().item(), structdata.v.max().item()) + 1
+        if _seqlen != _nodes:
+            raise GraphObjectError(f"sequence is not matching Ca-Ca nodes {_seqlen} vs {_nodes}")
         if _INVALID_AA & set(structdata.sequence):
             raise GraphObjectError(f"invalid aa in sequence {structdata.sequence}")
         return cls(path=path, code=code, **structdata.asdict())

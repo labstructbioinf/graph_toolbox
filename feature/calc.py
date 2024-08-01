@@ -268,8 +268,7 @@ def read_struct(pdbloc: str | pd.DataFrame,
     first_dim_split = feats.split(res_at_num, 0)
     for i in range(len(res_at_num)):
         efeat_list.extend(list(first_dim_split[i].split(res_at_num, 1)))
-    if t is None:
-        t = res_dist.max() + 1
+    res_dist = res_dist.fill_diagonal_(0)
     u, v = th.where(res_dist < t)
     uv = th.where(res_dist < t)[0]
     # sum only for residues within threshold
