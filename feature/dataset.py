@@ -9,6 +9,20 @@ import torch
 import dgl
 from .base import GraphData
 
+def traverse_datasets(hdf_file):
+    # https://stackoverflow.com/questions/51548551/reading-nested-h5-group-into-numpy-array
+    def h5py_dataset_iterator(g, prefix=''):
+        for key in g.keys():
+            item = g[key]
+            path = f'{prefix}/{key}'
+            if isinstance(item, h5py.Dataset): # test for dataset
+                yield (path, item)
+            elif isinstance(item, h5py.Group): # test for group (go down)
+                yield from h5py_dataset_iterator(item, path)
+
+    for path, _ in h5py_dataset_iterator(hdf_file):
+        yield path
+
 
 class H5Handle:
     '''
@@ -63,8 +77,7 @@ class H5Handle:
             if with_dist:
                 return g, distancemx
             else:
-                g
-        
+                return g
         
     def read_key(self, code: str, key: str):
 
@@ -95,17 +108,20 @@ class H5Handle:
     
     @property
     def codes(self) -> list:
+        # https://stackoverflow.com/questions/51548551/reading-nested-h5-group-into-numpy-array
         with h5py.File(self.filename, 'r') as hf:
             valid_codes = list()
-            preffix = set(hf.keys())
+            preffix = hf.keys()
             for pre in preffix:
                 hfpdb = hf[pre]
                 pdbs = hfpdb.keys()
+                #breakpoint()
                 for pdb in pdbs:
-                    hfpdb = hf[pre][pdb]
-                    codes = hfpdb.keys()
+                    cursor = hfpdb[pdb]
+                    if not isinstance(cursor, h5py.Group): continue
+                    codes = cursor.keys()
                     for code in codes:
-                        if hfpdb[code].attrs.get('is_valid', False):
+                        if cursor[code].attrs.get('is_valid', False):
                             valid_codes.append(code)
         return valid_codes
     
@@ -134,29 +150,18 @@ class EmbH5Handle:
     def write(self, emb, code):
         pdb, chain, hnum = code.split("_")
         with h5py.File(self.filename, "a") as hf:
-            pdbgr = hf.require_group(pdb)
-            pdbgr.attrs['is_valid'] = False
-            if code not in pdbgr:
-                pdbsubgr = pdbgr.require_group(code)
-                pdbsubgr.create_dataset('emb', data=emb.numpy())
-                pdbgr.attrs['is_valid'] = True
+            hf.create_dataset(code, 
+                              shape=emb.shape, 
+                              data=emb.numpy(), 
+                              dtype=np.float16,
+                              compression='gzip')
 
     def read(self, code) -> torch.Tensor:
         pdb, chain, hnum = code.split("_")
         with h5py.File(self.filename, "a") as hf:
-            pdbgr = hf.require_group(pdb)
-            if code in pdbgr:
-                pdbsubgr = pdbgr.require_group(code)
-                return torch.from_numpy(pdbsubgr['emb'][:])
-            else:
-                raise FileNotFoundError(f"missing {code}")
+            return torch.from_numpy(hf[code][:])
             
     @property
     def codes(self) -> list:
         with h5py.File(self.filename, 'r') as hf:
-            valid_codes = list()
-            pdbs = set(hf.keys())
-            for pdb in pdbs:
-                hfpdb = hf[pdb]
-                valid_codes += list(hfpdb.keys())
-            return valid_codes
+            return list(hf.keys())
