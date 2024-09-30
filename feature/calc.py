@@ -3,14 +3,13 @@ import os
 from typing import Union, Tuple, List, Optional
 
 import sys
-from dataclasses import dataclass, asdict
 sys.path.append('..')
 import pandas as pd
-pd.options.mode.chained_assignment = None  # default='warn'
 import torch as th
 
 from biopandas.pdb import PandasPdb
 
+from .models import StructFeats
 from .numeric import (distance, 
                      backbone_dihedral, 
                      sidechain_dihedral)
@@ -31,19 +30,6 @@ from .params import (BACKBONE,
                     C_DELTA,
                     C_GAMMA,
                     aa_trans)
-
-
-@dataclass
-class StructFeats:
-    u: th.Tensor
-    v: th.Tensor
-    efeats: th.Tensor
-    nfeats: th.Tensor
-    sequence: List[str]
-    distancemx: th.Tensor
-
-    def asdict(self):
-        return asdict(self)
 
 
 def map_aa_name(resname):
@@ -122,6 +108,7 @@ def read_struct(pdbloc: str | pd.DataFrame,
     c_xyz, n_xyz = list(), list()
     residues, residues_name = list(), list()
     res_per_res = list()
+    chainids = list()
     is_side_chain = list()
     res_at_num = list()
     # remove ligands like DD1, dd2
@@ -131,16 +118,17 @@ def read_struct(pdbloc: str | pd.DataFrame,
     # remove insertions
     mask &= data.insertion == ""
     data = data[mask].sort_values(by=['chain_id', 'residue_number']).copy()
-    for resi, (_, residue) in enumerate(data.groupby(['chain_id', 'residue_number'])):
+    for res_enum, ((chainid, resid), residue) in enumerate(data.groupby(['chain_id', 'residue_number'])):
         missing_cg = True
         missing_cb = True
         missing_ca = True
         missing_cg = True
         missing_cd = True
         missing_c = True
+        chainids.append(chainid)
         num_atoms = residue.shape[0]
         res_at_num.append(num_atoms)
-        residues.append(resi)
+        residues.append(resid)
         res_per_res.append(residue.iloc[0].residue_name)
         for _, atom in residue.iterrows():
             n = atom.atom_name
@@ -305,7 +293,9 @@ def read_struct(pdbloc: str | pd.DataFrame,
                       efeats = th.cat((feats_at.float().squeeze(), feats_res), dim=-1),
                       nfeats = th.cat((backbone_dih, sidechain_dih), dim=-1),
                       sequence=res_per_res,
-                      distancemx=th.stack((res_dist, cb_dist), dim=2))
+                      distancemx=th.stack((res_dist, cb_dist), dim=2),
+                      residueid=res_number,
+                      chainids=chainids)
 
 
 

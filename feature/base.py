@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional
+from typing import List, Optional, Union
 from dataclasses import dataclass
 import pickle
 from biopandas.pdb import PandasPdb
@@ -43,9 +43,10 @@ class GraphData:
                     'efeats', 
                     'nfeats', 
                     'sequence', 
-                    'distancemx']
+                    'distancemx',
+                    'residueid']
 
-    def __init__(self, code, u, v, efeats, nfeats, sequence, distancemx, **kwargs):
+    def __init__(self, code, u, v, efeats, nfeats, sequence, distancemx, residueid=None, chainids=None, **kwargs):
         self.code = code
         self.sequence = sequence
         self.u = u
@@ -54,9 +55,11 @@ class GraphData:
         self.efeats = efeats
         self.kwargs = kwargs
         self.distancemx = distancemx
+        self.residueid = residueid
+        self.chainids = chainids
 
     @classmethod
-    def from_pdb(cls, path: str, 
+    def from_pdb(cls, path: Union[str, pd.DataFrame], 
                  code: str,
                  ca_threshold: float = 7,
                  **kwargs) -> "GraphData":
@@ -74,7 +77,7 @@ class GraphData:
         if _seqlen != _nodes:
             raise GraphObjectError(f"sequence is not matching Ca-Ca nodes {_seqlen} vs {_nodes}")
         if _INVALID_AA & set(structdata.sequence):
-            raise GraphObjectError(f"invalid aa in sequence {structdata.sequence}")
+            raise GraphObjectError(f"invalid aa in sequence {set(structdata) - _INVALID_AA}")
         return cls(path=path, code=code, **structdata.asdict())
     
     @classmethod
@@ -112,7 +115,6 @@ class GraphData:
             dsspasint = [SS_MAP_EXT[letter] for letter in self.dssp]    
             dsspasint = torch.LongTensor(dsspasint)
         seqasint = torch.LongTensor(seqasint)
-        
 
         g = dgl.graph((self.u, self.v))
         g.ndata['seq'] = seqasint
@@ -189,6 +191,8 @@ class GraphData:
             raise GraphObjectError(f'number of node features is different then featnames {feats.shape} and {self.nfeatname}')
         data = pd.DataFrame(feats, columns=self.nfeatname)
         data['residue'] = self.sequence
+        data['resid'] = self.residueid.numpy()
+        data['chain_id'] = self.chainids
         return data
 
     def to_h5(self) -> dict:
