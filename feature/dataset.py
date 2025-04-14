@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import time
 from typing import List, Any, Union
 
@@ -8,6 +9,13 @@ import torch
 
 import dgl
 from .base import GraphData
+
+
+def key_from_code(code: str):
+    """create key from pdb_chain_hnum"""
+    pdb, chain, hnum = code.split("_")
+    key = f"/_{pdb[1:3]}/_{pdb}/_{code}"
+    return key
 
 def traverse_datasets(hdf_file):
     # https://stackoverflow.com/questions/51548551/reading-nested-h5-group-into-numpy-array
@@ -37,30 +45,46 @@ class H5Handle:
     error_group: str = "errors"
     direct_read: bool = True
     filename: str
-    def __init__(self, filename : Union[str, os.PathLike]):
+    def __init__(self, filename : Union[str, Path]):
+        
+        filename = Path(filename)
         if not os.path.isfile(filename):
             with h5py.File(filename, "w") as hf:
                 pass
         self.filename = filename
 
 # https://github.com/harvardnlp/botnet-detection/blob/master/graph_data_storage.md
-    def write_graph(self, g: GraphData):
-
-        group = self.group_from_code(g.code)
-        with h5py.File(self.filename, "a") as hf:
-            pdbgr = hf.require_group(group)
-            pdbgr.attrs['is_valid'] = False
-            for key, val in g.to_h5().items():
-                pdbgr.create_dataset(name=key, data=val)
-            pdbgr.attrs['is_valid'] = True
+    def write_graph(self, g: GraphData, direct_code: bool = False):
+        """
+        with use_code g.code is a direct key
+        """
+        if direct_code:
+            with h5py.File(self.filename, "a") as hf:
+                pdbgr = hf.require_group(g.code)
+                pdbgr.attrs['is_valid'] = False
+                for key, val in g.to_h5().items():
+                    pdbgr.create_dataset(name=key, data=val)
+                pdbgr.attrs['is_valid'] = True
+        else:
+            group = self.group_from_code(g.code)
+            with h5py.File(self.filename, "a") as hf:
+                pdbgr = hf.require_group(group)
+                pdbgr.attrs['is_valid'] = False
+                for key, val in g.to_h5().items():
+                    pdbgr.create_dataset(name=key, data=val)
+                pdbgr.attrs['is_valid'] = True
             
-    def read_graph(self, code, with_dist=True):
+    def read_graph(self, code, with_dist=True, sdh=True):
         '''
         if size is none read all record from start to the end
         '''
         with h5py.File(self.filename, 'r') as hf:
-            group = self.group_from_code(code)
-            pdbsubgr = hf[group]
+            if sdh:
+                key = key_from_code(code)
+                pdbsubgr = hf[key]
+            else:
+                group = self.group_from_code(code)
+                pdbsubgr = hf[group]
             try:
                 u, v = torch.from_numpy(pdbsubgr['u'][:]), torch.from_numpy(pdbsubgr['v'][:])
                 sequence = torch.from_numpy(pdbsubgr['sequence'][:])
@@ -147,8 +171,9 @@ class EmbH5Handle:
                 pass
             
 # https://github.com/harvardnlp/botnet-detection/blob/master/graph_data_storage.md
-    def write(self, emb, code):
-        pdb, chain, hnum = code.split("_")
+    def write(self, emb, code, sdh=True):
+        if not sdh:
+            pdb, chain, hnum = code.split("_")
         with h5py.File(self.filename, "a") as hf:
             hf.create_dataset(code, 
                               shape=emb.shape, 
@@ -156,8 +181,9 @@ class EmbH5Handle:
                               dtype=np.float16,
                               compression='gzip')
 
-    def read(self, code) -> torch.Tensor:
-        pdb, chain, hnum = code.split("_")
+    def read(self, code, sdh=True) -> torch.Tensor:
+        if not sdh:
+            pdb, chain, hnum = code.split("_")
         with h5py.File(self.filename, "a") as hf:
             return torch.from_numpy(hf[code][:])
             

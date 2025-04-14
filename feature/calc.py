@@ -10,26 +10,30 @@ import torch as th
 from biopandas.pdb import PandasPdb
 
 from .models import StructFeats
-from .numeric import (distance, 
-                     backbone_dihedral, 
-                     sidechain_dihedral)
+from .numeric import (
+    distance, 
+    backbone_dihedral, 
+    sidechain_dihedral
+)
 
-from .params import (BACKBONE,
-                    HYDROPHOBIC,
-                     AROMATIC,
-                     CATION_PI,
-                     SALT_BRIDGE_C1,
-                     SALT_BRIDGE_C2,
-                     CHARGE,
-                     SIGMA,
-                     EPSILON,
-                    HYDROGEN_ACCEPTOR,
-                    HYDROGEN_DONOR,
-                    VDW_RADIUS,
-                    VDW_ATOMS,
-                    C_DELTA,
-                    C_GAMMA,
-                    aa_trans)
+from .params import (
+    BACKBONE,
+    HYDROPHOBIC,
+    AROMATIC,
+    CATION_PI,
+    SALT_BRIDGE_C1,
+    SALT_BRIDGE_C2,
+    CHARGE,
+    SIGMA,
+    EPSILON,
+    HYDROGEN_ACCEPTOR,
+    HYDROGEN_DONOR,
+    VDW_RADIUS,
+    VDW_ATOMS,
+    C_DELTA,
+    C_GAMMA,
+    aa_trans
+)
 
 
 def map_aa_name(resname):
@@ -115,8 +119,9 @@ def read_struct(pdbloc: str | pd.DataFrame,
     mask = ~data.atom_name.str.startswith('D')
     # remove alt located atoms
     mask &= ~data.alt_loc.isin(invalid_location)
-    # remove insertions
-    mask &= data.insertion == ""
+    # remove insertions - this column may not exist
+    if 'insertion' in data.columns:
+        mask &= data.insertion == ""
     data = data[mask].sort_values(by=['chain_id', 'residue_number']).copy()
     for res_enum, ((chainid, resid), residue) in enumerate(data.groupby(['chain_id', 'residue_number'])):
         missing_cg = True

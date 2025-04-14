@@ -46,12 +46,23 @@ class GraphData:
                     'distancemx',
                     'residueid']
 
-    def __init__(self, code, u, v, efeats, nfeats, sequence, distancemx, residueid=None, chainids=None, **kwargs):
+    def __init__(
+            self, 
+            code, 
+            u, v, 
+            efeats, 
+            nfeats, 
+            sequence, 
+            distancemx, 
+            residueid=None, 
+            chainids=None, 
+            **kwargs):
         self.code = code
         self.sequence = sequence
         self.u = u
         self.v = v
         self.nfeats = nfeats
+        self.num_nodes = nfeats.shape[0]
         self.efeats = efeats
         self.kwargs = kwargs
         self.distancemx = distancemx
@@ -59,10 +70,12 @@ class GraphData:
         self.chainids = chainids
 
     @classmethod
-    def from_pdb(cls, path: Union[str, pd.DataFrame], 
-                 code: str,
-                 ca_threshold: float = 7,
-                 **kwargs) -> "GraphData":
+    def from_pdb(
+        cls, 
+        path: Union[str, pd.DataFrame], 
+        code: str,
+        ca_threshold: float = 7,
+        **kwargs) -> "GraphData":
         """
         from pdb file
         """
@@ -81,12 +94,11 @@ class GraphData:
         return cls(path=path, code=code, **structdata.asdict())
     
     @classmethod
-    def from_h5(cls, path: str, key: str):
-
+    def from_h5(cls, path: str, key: str, ca_threshold = 7):
+        
         atoms = pd.read_hdf(path, key=key, mode='r')
-        pdb = PandasPdb()
-        pdb.df['ATOMS'] = atoms
-        return cls.from_pdb(pdb, )
+        structdata = read_struct(atoms, chain=None, t=ca_threshold)
+        return cls(path=path, code=key, **structdata.asdict())
 
     def to_dgl(self, validate: bool = False,
                 with_dist: bool = False,

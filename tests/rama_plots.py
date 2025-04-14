@@ -38,11 +38,11 @@ for idx, row in tqdm(data.iterrows()):
     tmp['key'] = key
     datatmp.append(tmp)
 
-datat = pd.concat(datatmp, axis=0)
+datat = pd.concat(datatmp, axis=0, ignore_index=True)
 
 # %%
-for key, gdata in datat.groupby(["key", "residue"]):
-    print(gdata.resid.tolist())
+for key, gdata in datat.groupby(["key"]):
+    print(gdata.shape)
 
 # %%
 plt.scatter(datat.psi, datat.phi)

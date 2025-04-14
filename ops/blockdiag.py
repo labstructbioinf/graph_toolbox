@@ -11,7 +11,6 @@ class SparseBlokDiag:
     '''
     routines to avoid explicite creating a adj/dist matrices
     '''
-    blocks: List[torch.Tensor]
     def __init__(self, blocks: List[torch.Tensor]):
 
         assert isinstance(blocks, (list, tuple))
