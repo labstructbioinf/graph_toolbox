@@ -184,7 +184,7 @@ class EmbH5Handle:
     def read(self, code, sdh=True) -> torch.Tensor:
         if not sdh:
             pdb, chain, hnum = code.split("_")
-        with h5py.File(self.filename, "a") as hf:
+        with h5py.File(self.filename, "r") as hf: # changed from a to r to enable accessing files without write permission
             return torch.from_numpy(hf[code][:])
             
     @property
