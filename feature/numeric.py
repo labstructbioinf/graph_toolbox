@@ -1,4 +1,3 @@
-
 from typing import Optional
 import torch as th
 
@@ -29,22 +28,22 @@ def calc_single_dihedral(x1, x2, x3, x4) -> th.Tensor:
     b2 = x3 - x2
     b3 = x4 - x3
     cross12 = th.linalg.cross(b1, b2)
-    #cross12 /= LA.vector_norm(cross12, ord=2, dim=1, keepdim=True)
+    # cross12 /= LA.vector_norm(cross12, ord=2, dim=1, keepdim=True)
     cross23 = th.linalg.cross(b2, b3)
-    #cross23 /= LA.vector_norm(cross23, ord=2, dim=1, keepdim=True)
+    # cross23 /= LA.vector_norm(cross23, ord=2, dim=1, keepdim=True)
     b2 /= th.pow(b2, 2).sum(-1, keepdim=True).sqrt()
     cross_1223 = th.linalg.cross(cross12, cross23)
     dot_1223 = dotproduct(cross12, cross23)
-    #dot_b2cross1223 = dotproduct(b2, cross_1223)
-    #print(b2norm.shape, dot_1223.shape, cross_1223.shape)
-    #angle = th.atan2( dot_b2cross1223,  b2norm*dot_1223)
-    angle = th.atan2( dotproduct(b2,cross_1223), dot_1223)
+    # dot_b2cross1223 = dotproduct(b2, cross_1223)
+    # print(b2norm.shape, dot_1223.shape, cross_1223.shape)
+    # angle = th.atan2( dot_b2cross1223,  b2norm*dot_1223)
+    angle = th.atan2(dotproduct(b2, cross_1223), dot_1223)
     if angle.ndim == 1:
         angle = angle.unsqueeze(-1)
     return angle
 
 
-#@th.jit.script
+# @th.jit.script
 def backbone_dihedral(n: th.Tensor, ca: th.Tensor, c: th.Tensor):
     """
     Args:
@@ -52,7 +51,7 @@ def backbone_dihedral(n: th.Tensor, ca: th.Tensor, c: th.Tensor):
         carbon_alpha: torch.Tensor
         carbon: torch.Tensor
         C - N - CA - C - N
-         b1  b2   b3  vectors 
+         b1  b2   b3  vectors
            n1   n2  planes
         phi: C-N-CA-C
         psi: N-CA-C-N
@@ -64,9 +63,9 @@ def backbone_dihedral(n: th.Tensor, ca: th.Tensor, c: th.Tensor):
     phi = calc_single_dihedral(c.roll(1, dims=0), n, ca, c)
     psi = calc_single_dihedral(n, ca, c, n.roll(-1, dims=0))
     omega = calc_single_dihedral(ca.roll(1, dims=0), n.roll(1, dims=0), c, ca)
-    phi[0] = float('nan')
-    psi[-1] = float('nan')
-    omega[0] = float('nan')
+    phi[0] = float("nan")
+    psi[-1] = float("nan")
+    omega[0] = float("nan")
 
     return th.cat((phi, psi, omega), dim=1)
 
