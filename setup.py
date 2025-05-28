@@ -1,13 +1,16 @@
-from setuptools import setup
-import os
-
-if not os.path.islink("graph_toolbox") and not os.path.exists("graph_toolbox"):
-    os.symlink("feature", "graph_toolbox")
+from setuptools import setup, find_packages
 
 setup(
     name="graph_toolbox",
     version="0.1",
-    packages=["graph_toolbox"],
+    packages=find_packages(),  # wykryje feature jako podpakiet
+    install_requires=[
+        "torch",
+        "torchdata==0.9.0",
+        "dgl==1.1.3",
+        "biopandas",
+        "pydantic",
+    ],
 )
 
 

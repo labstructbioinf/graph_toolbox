@@ -1,0 +1,6 @@
+torch
+torchdata==0.9.0
+dgl==1.1.3
+biopandas
+pydantic
+
