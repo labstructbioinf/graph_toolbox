@@ -118,6 +118,7 @@ class H5Handle:
         """
         locate h5 group based on code
         """
+        print(code)
         pdb, _, _ = code.split("_")
         preffix = pdb[:2]
         #group = f"{preffix}/{pdb}/{code}"
