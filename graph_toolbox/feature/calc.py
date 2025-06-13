@@ -177,12 +177,12 @@ def read_struct(
     num_residues = len(res_per_res)
     res_number = th.LongTensor(residues)
     # add vitual Carbon Beta to glycine
-    ca_cb_len = 1.53363
-    for rid, res_name in enumerate(residues_name):
-        if res_name.lower() == "gly":
-            n = n_xyz[i]
-            ca = ca_xyz[i]
-            c = ca_xyz[i]
+    # ca_cb_len = 1.53363
+    # for rid, res_name in enumerate(residues_name):
+    #     if res_name.lower() == "gly":
+    #         n = n_xyz[i]
+    #         ca = ca_xyz[i]
+    #         c = ca_xyz[i]
 
     name_base = [n[0] for n in name]
     # at_charge = [CHARGE[n] for n in name_base]
