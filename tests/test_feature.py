@@ -24,14 +24,17 @@ def remove_cache():
 
 @pytest.mark.parametrize("pdb", get_test_pdbs())
 @pytest.mark.parametrize("t", [5, 7, 9])
-@pytest.mark.parametrize("with_interactions", [True, False])
-def test_read_struct(pdb, t, with_interactions):
+def test_read_struct(pdb, t):
 
     pdb_content = PandasPdb().read_pdb(pdb).df["ATOM"]
-    d = read_struct(pdb_content, t=t, with_interactions=with_interactions)
+    d = read_struct(pdb_content, t=t, with_interactions=False)
     djson = d.asdict()
     assert djson["u"].shape == djson["v"].shape
-    # assert (djson["distancemx"] >= 0).all()
+    d_interactions = read_struct(pdb_content, t=t, with_interactions=True)
+    # number of edges is the same
+    assert d_interactions.efeats.shape[0] == d.efeats.shape[0]
+    # but number of features not
+    assert d_interactions.efeats.shape[1] > d.efeats.shape[1]
 
 
 @pytest.mark.parametrize("pdb", get_test_pdbs())
