@@ -73,157 +73,173 @@ def residue_atoms_criteria(iterator, criteria_dict: dict, storage: list):
 
 
 def read_struct(
-    pdbloc: str | pd.DataFrame,
-    chain: Optional[str] = None,
+    pdbloc: pd.DataFrame,
     t: Optional[float] = None,
-    indices_to_read: Optional[list] = None,
 ) -> StructFeats:
     """
     params:
-        pdb_loc (str, set, atomium.Model): path to structure, atomium selection
+        pdb_loc (pd.DataFrame): dataframe of parsed PDB structure
         chain (str): one letter pdb code
         t (float): contact distance threshold
     return u, v for feats
     """
-    if isinstance(pdbloc, str):
-        data = PandasPdb().read_pdb(pdbloc)
-        atoms = data.df["ATOM"]
-        hetatm = data.df["HETATM"]
-        hetatm = hetatm[hetatm.residue_name.isin(aa_trans)]
-        hetatm["residue_name"] = hetatm["residue_name"].apply(map_aa_name)
-        data = pd.concat([atoms, hetatm], axis=0)
-    elif isinstance(pdbloc, pd.DataFrame):
-        data = pdbloc
-    if not isinstance(t, (int, float, type(None))):
-        raise ValueError(f"threshold must be number or None, given: {type(t)}")
-    else:
-        if isinstance(t, (int, float)) and t < 5:
-            print("dumb threshold")
-    if chain is not None:
-        data = data.loc[data["chain_id"] == chain].copy()
-        if data.shape[0] == 0:
-            raise ValueError(f"no data in chain {chain}")
-    if indices_to_read is not None:
-        data = data.loc[data["residue_number"].isin(indices_to_read)].copy()
-    atoms, name = list(), list()
+    
+    data = pdbloc.sort_values(by=["chain_id", "residue_number"]).copy()
+        
+    if not isinstance(t, (int, float)):
+        raise ValueError(f"CA distance cut-off must be a number, given: {type(t)}")
+                
+    # per residue data containers
+    chainids = list()
+    residues = list()
+    res_at_num = list() # number of atoms
+    res_per_res = list() # three-letter residue name 
+    
+    # per atom data containers 
     ca_xyz, cb_xyz = list(), list()
     cg_xyz, cd_xyz = list(), list()
     c_xyz, n_xyz = list(), list()
-    residues, residues_name = list(), list()
-    res_per_res = list()
-    chainids = list()
+    residues_name = list()
     is_side_chain = list()
-    res_at_num = list()
-    # remove ligands like DD1, dd2
-    mask = ~data.atom_name.str.startswith("D")
-    # remove alt located atoms
-    mask &= ~data.alt_loc.isin(invalid_location)
-    # remove insertions - this column may not exist
-    if "insertion" in data.columns:
-        mask &= data.insertion == ""
-    data = data[mask].sort_values(by=["chain_id", "residue_number"]).copy()
+    atoms, name = list(), list()
+    
+    # iterate over residues
     for res_enum, ((chainid, resid), residue) in enumerate(
         data.groupby(["chain_id", "residue_number"])
     ):
-        missing_cg = True
-        missing_cb = True
         missing_ca = True
+        missing_cb = True
+        missing_c = True
+        missing_n = True
         missing_cg = True
         missing_cd = True
-        missing_c = True
+
+        # fill per residue data containers
         chainids.append(chainid)
-        num_atoms = residue.shape[0]
-        res_at_num.append(num_atoms)
         residues.append(resid)
-        res_per_res.append(residue.iloc[0].residue_name)
+        res_at_num.append(residue.shape[0])
+        res_name = residue.iloc[0].residue_name
+        res_per_res.append(res_name)
+
+        # iterate over atoms of a residue
         for _, atom in residue.iterrows():
+            
             n = atom.atom_name
-            if atom.atom_name == "CA":
+            
+            if n == "CA":
+                assert missing_ca
                 ca_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
                 missing_ca = False
-            elif atom.atom_name == "CB":
+            elif n == "CB":
+                assert missing_cb, residue
                 cb_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
                 missing_cb = False
-            elif atom.atom_name == "C":
+            elif n == "C":
+                assert missing_c
                 c_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
                 missing_c = False
-            elif atom.atom_name == "N":
+            elif n == "N":
+                assert missing_n
                 n_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
-            elif atom.atom_name in C_GAMMA:
-                missing_cg = False
+                missing_n = False 
+            elif n in C_GAMMA:
+                assert missing_cg
                 cg_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
-            elif atom.atom_name in C_DELTA:
-                missing_cd = False
+                missing_cg = False
+            elif n in C_DELTA:
+                assert missing_cd
                 cd_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
+                missing_cd = False
+
+            # FIXME: why?
             elif len(n) == 3:
                 n = n[:2]
+
+            # fill per atom data containers
             atoms.append((atom.x_coord, atom.y_coord, atom.z_coord))
             residues_name.append(atom.residue_name)
             name.append(n)
             is_side_chain.append(True if n in side_chain_atom_names else False)
+
+        # residue description for error messages
+        tmp_res_text = f'{chainid}:{res_name}-{resid}'
+            
+        # check backbone atoms
+        assert not missing_ca, f'missing Ca atom in {tmp_res_text}!'
+        assert not missing_c, f'missing C atom in {tmp_res_text}!'
+        assert not missing_n, f'missing N atom in {tmp_res_text}!'
+
+        # chek Cb atom
         if missing_cb:
-            cb_xyz.append(nan_xyz)
-        if missing_ca:
-            ca_xyz.append(nan_xyz)
+            if res_name!='GLY':
+                raise ValueError(f'missing Cb atom in {tmp_res_txt}!')
+            else:
+                cb_xyz.append(nan_xyz)
+            
+        # fill missing gamma and delta carbons 
         if missing_cg:
             cg_xyz.append(nan_xyz)
         if missing_cd:
             cd_xyz.append(nan_xyz)
-        if missing_c:
-            c_xyz.append(nan_xyz)
 
-    # assign parameters to atoms
-    num_atoms = len(name)
-    num_residues = len(res_per_res)
-    res_number = th.LongTensor(residues)
-    # add vitual Carbon Beta to glycine
-    # ca_cb_len = 1.53363
-    # for rid, res_name in enumerate(residues_name):
-    #     if res_name.lower() == "gly":
-    #         n = n_xyz[i]
-    #         ca = ca_xyz[i]
-    #         c = ca_xyz[i]
+    # check per atom containers
+    assert len(set(map(len, [
+        residues_name, is_side_chain, atoms, name
+    ]))) == 1, (
+        f"All per-atom lists must have equal length, got lengths: "
+        f"res_name={len(residues_name)}, side_chain={len(is_side_chain)}, "
+        f"atoms={len(atoms)}, name={len(name)}"
+    )
 
-    name_base = [n[0] for n in name]
-    # at_charge = [CHARGE[n] for n in name_base]
-    at_vdw = [SIGMA[n] for n in name_base]
-    # atom_arr = [atom_id[n] for n in name_base]
-    at_eps = [EPSILON[n] for n in name_base]
-    # convert to tensors
+    # check per residue containers
+    assert (
+        len(chainids) == len(residues) == len(res_at_num) == len(res_per_res) ==
+        len(ca_xyz) == len(cb_xyz) == len(cg_xyz) == len(cd_xyz) ==
+        len(c_xyz) == len(n_xyz)
+    ), (
+        f"All per-residue and backbone/sidechain atom lists must have equal length, got lengths: "
+        f"chainids={len(chainids)}, residues={len(residues)}, "
+        f"res_at_num={len(res_at_num)}, res_per_res={len(res_per_res)}, "
+        f"ca={len(ca_xyz)}, cb={len(cb_xyz)}, cg={len(cg_xyz)}, cd={len(cd_xyz)}, "
+        f"c={len(c_xyz)}, n={len(n_xyz)}"
+    )
+
+    num_atoms = len(name) # number of atoms in the structure
+    num_residues = len(res_per_res) # number of residues in the structure
+    res_number = th.LongTensor(residues) # list of residue ids
+    
+    # convert atoms coordinates to tensors
     res_ca = th.FloatTensor(ca_xyz)
-    res_dist = distance(res_ca)
     res_cb = th.FloatTensor(cb_xyz)
-    res_cg = th.FloatTensor(cg_xyz)
-    res_cd = th.FloatTensor(cd_xyz)
-    # res_cg = th.FloatTensor(cg_xyz)
     res_c = th.FloatTensor(c_xyz)
     res_n = th.FloatTensor(n_xyz)
-    # print(minlength, chainlength)
-    if num_residues != res_ca.shape[0]:
-        raise ValueError(
-            f"number of residues is different then CA atoms {num_residues} and {res_ca.shape[0]}"
-        )
-    # check variuos atom/residue types
-    # hydrophobic
+    res_cg = th.FloatTensor(cg_xyz)
+    res_cd = th.FloatTensor(cd_xyz)
+    
+    # hydrophobic residues mask
     is_res_hf = [True if r in HYDROPHOBIC else False for r in residues_name]
-    # hydrogen bonds
+    
+    # hydrogen bonds acceptors and donors atom mask
     is_at_hb_a = [False] * num_atoms
     is_at_hb_d = [False] * num_atoms
     is_at_hb_ac = [True if at.startswith("C") else False for at in name]
     is_at_hb_ad = [True if at.startswith("NH") else False for at in name]
+    
     is_res_ar = is_atom_in_group(residues_name, AROMATIC, num_atoms)
     is_res_cpi = is_atom_in_group(name, CATION_PI, num_atoms)
     is_res_arg = is_atom_in_group(residues_name, "ARG", num_atoms)
-    # salt bridge
-    is_at_sb_c1 = is_atom_in_group(name, SALT_BRIDGE_C1, num_atoms)
-    is_res_sb_c1 = is_atom_in_group(residues_name, {"ARG", "LYS"}, num_atoms)
-    is_at_sb_c2 = is_atom_in_group(name, {"ARG", "GLU"}, num_atoms)
-    is_res_sb_c2 = is_atom_in_group(residues_name, SALT_BRIDGE_C2, num_atoms)
+    
+    # base atom names (CA,CB,C->C etc.) 
+    name_base = [n[0] for n in name]
+    
     # van der Waals
     is_at_vdw_other = [False] * num_atoms
     for i, (res, at) in enumerate(zip(residues_name, name)):
+
+        #print(i, res, at)
+        
         # residue level criteria
-        if res in VDW_ATOMS:
+        if res in VDW_ATOMS: # przeciez tutaj sa tylko dwie reszty?
             # atomic level criteria
             if at in VDW_ATOMS[res]:
                 is_at_vdw_other[i] = True
@@ -233,38 +249,74 @@ def read_struct(
                 is_at_hb_a[i] = True
         if res in HYDROGEN_DONOR:
             if at in HYDROGEN_DONOR[res]:
-                is_at_hb_a[i] = True
+                is_at_hb_a[i] = True # ????????? przeciez tutaj musi byc donor?
     is_at_vdw = [True if at in {"C", "S"} else False for at in name_base]
+
+    #sys.exit(-1)
+
+
+    # get Lennarda-Jones parameters
+    at_vdw = [SIGMA[n] for n in name_base]
+    sigma = th.FloatTensor(at_vdw)
+    
+    at_eps = [EPSILON[n] for n in name_base]
+    at_id = th.LongTensor(at_eps) # ?????? why id?
+    
     at_xyz = th.FloatTensor(atoms)
     at_dist = distance(at_xyz)
-    at_id = th.LongTensor(at_eps)
-    sigma = th.FloatTensor(at_vdw)
+    
+    
     at_is_side = th.BoolTensor(is_side_chain)
+    
     # hbonds acceptor donors
     at_is_hba = th.BoolTensor(is_at_hb_a) | th.BoolTensor(is_at_hb_ac)
     at_is_hbd = th.BoolTensor(is_at_hb_d) | th.BoolTensor(is_at_hb_ad)
+    
     # vdw
     at_is_vdw = th.BoolTensor(is_at_vdw) | th.BoolTensor(is_at_vdw_other)
+    
     # set inverse of the atom self distance to zero to avoid nan/inf when summing
     sigma_radii = sigma.view(-1, 1) + sigma.view(1, -1)
-    # binary interactions
-    disulfde = (at_id == 4) & (at_dist < 2.2)
+
+    # === DEFINE EDGE FEATURES
+    
+    # binary residue-residue interactions    
+    disulfde = (at_id == 4) & (at_dist < 2.2)  ### will be never 4!!!
     at_dist_5a = at_dist < 5.0
     hydrophobic = at_dist_5a & (at_is_side == False) & th.BoolTensor(is_res_hf)
     cation_pi = (at_dist < 6) & is_res_cpi
     arg_arg = at_dist_5a & is_res_arg
-    vdw = ((at_dist - sigma_radii) < 0.5) & at_is_vdw
-    # hbonds
-    hbond = at_is_hba.view(-1, 1) & at_is_hbd.view(1, -1) & (at_dist < 3.5)
-    # salt bridge
+        
+    # salt bridges
+
+    # SALT_BRIDGE_PAIRS = {
+    #     ("ARG", "ASP"),
+    #     ("ARG", "GLU"),
+    #     ("LYS", "ASP"),
+    #     ("LYS", "GLU"),
+    # }
+    
+    is_at_sb_c1 = is_atom_in_group(name, SALT_BRIDGE_C1, num_atoms)
+    is_res_sb_c1 = is_atom_in_group(residues_name, {"ARG", "LYS"}, num_atoms)
+    is_at_sb_c2 = is_atom_in_group(name, {"ARG", "GLU"}, num_atoms)  ## ARG a nie ASP????
+    is_res_sb_c2 = is_atom_in_group(residues_name, SALT_BRIDGE_C2, num_atoms)
+    
     sb_tmp1 = th.BoolTensor(is_at_sb_c1).view(-1, 1) & th.BoolTensor(is_at_sb_c2).view(
         1, -1
     )
     sb_tmp2 = th.BoolTensor(is_res_sb_c1).view(-1, 1) & th.BoolTensor(
         is_res_sb_c2
     ).view(1, -1)
+    
     salt_bridge = sb_tmp1 & (at_dist < 5.0) & sb_tmp2
 
+    # hbonds
+    hbond = at_is_hba.view(-1, 1) & at_is_hbd.view(1, -1) & (at_dist < 3.5)
+
+    # vdw interactions
+    vdw = ((at_dist - sigma_radii) < 0.5) & at_is_vdw
+
+    # define edge features
     feats = th.cat(
         (
             disulfde.unsqueeze(2),
@@ -277,7 +329,9 @@ def read_struct(
         ),
         dim=2,
     )
-    # change feature resolution
+    
+
+    
     # residue level features
     # breakpoint()
     efeat_list = list()
@@ -285,6 +339,11 @@ def read_struct(
     first_dim_split = feats.split(res_at_num, 0)
     for i in range(len(res_at_num)):
         efeat_list.extend(list(first_dim_split[i].split(res_at_num, 1)))
+
+
+    # calculate Ca distance matrix
+    res_dist = distance(res_ca)
+        
     res_dist = res_dist.fill_diagonal_(0)
     u, v = th.where(res_dist < t)
     uv = th.where(res_dist < t)[0]

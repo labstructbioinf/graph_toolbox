@@ -82,7 +82,7 @@ class GraphData:
         if (not isinstance(path, pd.DataFrame)) and (not os.path.isfile(path)):
             raise FileNotFoundError(f'missing .pdb file for: {path}')
         try:
-            structdata = read_struct(path, chain=None, t = ca_threshold)
+            structdata = read_struct(path, t = ca_threshold)
         except Exception as e:
             raise GraphObjectError(e)
         _seqlen = len(structdata.sequence)
@@ -97,7 +97,7 @@ class GraphData:
     def from_h5(cls, path: str, key: str, ca_threshold = 7):
         
         atoms = pd.read_hdf(path, key=key, mode='r')
-        structdata = read_struct(atoms, chain=None, t=ca_threshold)
+        structdata = read_struct(atoms, t=ca_threshold)
         return cls(path=path, code=key, **structdata.asdict())
 
     def to_dgl(self, validate: bool = False,
