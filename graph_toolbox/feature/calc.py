@@ -1,81 +1,83 @@
-"""script for calculating residue - residue interactions"""
-
-from typing import List, Optional
+"""
+script for calculating residue - residue interactions
+input structure is assumed to be cleaned, i.e. no altLoc, continous sequence numbering, etc.
+"""
 
 import sys
+from typing import List, Optional
 
 sys.path.append("..")
 import pandas as pd
 import torch as th
 
-from biopandas.pdb import PandasPdb
+#from biopandas.pdb import PandasPdb
 
 from .models import StructFeats
 from .numeric import distance, backbone_dihedral, sidechain_dihedral
 
 from .params import (
-    BACKBONE,
-    HYDROPHOBIC,
-    AROMATIC,
-    CATION_PI,
-    SALT_BRIDGE_C1,
-    SALT_BRIDGE_C2,
-    CHARGE,
-    SIGMA,
-    EPSILON,
-    HYDROGEN_ACCEPTOR,
-    HYDROGEN_DONOR,
-    VDW_RADIUS,
-    VDW_ATOMS,
+    #BACKBONE,
+    #HYDROPHOBIC,
+    #AROMATIC,
+    #CATION_PI,
+    #SALT_BRIDGE_C1,
+    #SALT_BRIDGE_C2,
+    #CHARGE,
+    #SIGMA,
+    #EPSILON,
+    #HYDROGEN_ACCEPTOR,
+    #HYDROGEN_DONOR,
+    #VDW_RADIUS,
+    #VDW_ATOMS,
     C_DELTA,
     C_GAMMA,
-    aa_trans,
+    #aa_trans,
     gamma_choice,
     delta_choice
 )
 
 
-def map_aa_name(resname):
-    """
-    map residue residue names into standrad ones
-    """
-    if resname in aa_trans:
-        return aa_trans[resname]
-    else:
-        return aa_trans
+# def map_aa_name(resname):
+#     """
+#     map residue residue names into standrad ones
+#     """
+#     if resname in aa_trans:
+#         return aa_trans[resname]
+#     else:
+#         return aa_trans
 
 
 nan_type = float("nan")
 nan_xyz = (nan_type, nan_type, nan_type)
-atom_id = {ch: i for i, ch in enumerate(CHARGE.keys())}
-EPS = th.Tensor([78 * 1e-2])  # unit Farad / angsterm
-side_chain_atom_names = ["CA", "C", "N", "O"]
-invalid_location = {"B", "C", "D"}
+#atom_id = {ch: i for i, ch in enumerate(CHARGE.keys())}
+#EPS = th.Tensor([78 * 1e-2])  # unit Farad / angsterm
+#side_chain_atom_names = ["CA", "C", "N", "O"]
+#invalid_location = {"B", "C", "D"}
 
 
-def is_atom_in_group(atoms: List[str], group: set, size: int) -> th.BoolTensor:
-    arr = th.zeros(size, dtype=th.bool)
-    for i, at in enumerate(atoms):
-        if at in group:
-            arr[i] = True
-    return arr
+# def is_atom_in_group(atoms: List[str], group: set, size: int) -> th.BoolTensor:
+#     arr = th.zeros(size, dtype=th.bool)
+#     for i, at in enumerate(atoms):
+#         if at in group:
+#             arr[i] = True
+#     return arr
 
 
-def residue_atoms_criteria(iterator, criteria_dict: dict, storage: list):
-    """
-    iterates over structure and look for match in residue - atom level
-    """
-    for i, (res, at) in iterator:
-        # residue level criteria
-        if res in criteria_dict:
-            # atomic level criteria
-            if at in VDW_ATOMS[res]:
-                storage[i] = True
-    return storage
+# def residue_atoms_criteria(iterator, criteria_dict: dict, storage: list):
+#     """
+#     iterates over structure and look for match in residue - atom level
+#     """
+#     for i, (res, at) in iterator:
+#         # residue level criteria
+#         if res in criteria_dict:
+#             # atomic level criteria
+#             if at in VDW_ATOMS[res]:
+#                 storage[i] = True
+#     return storage
 
 
 def read_struct(
-    pdbloc: pd.DataFrame, t: Optional[float] = None, with_interactions=True
+    pdbloc: pd.DataFrame, t: Optional[float] = 8, with_interactions=False
 ) -> StructFeats:
     """
 
@@ -105,7 +107,7 @@ def read_struct(
     cg_xyz, cd_xyz = list(), list()
     c_xyz, n_xyz = list(), list()
     residues_name = list()
-    is_side_chain = list()
+    #is_side_chain = list()
     atoms, name = list(), list()
 
     # iterate over residues
@@ -149,12 +151,12 @@ def read_struct(
                 missing_n = False
                 
             elif n in C_GAMMA:
-                if n == gamma_choice[res_name]:  
+                if n == gamma_choice[res_name]:  # pick the best CG atom for a given residue
                     assert missing_cg
                     cg_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
                     missing_cg = False
             elif n in C_DELTA:
-                if n == delta_choice[res_name]: 
+                if n == delta_choice[res_name]:  # pick the best CD atom for a given residue
                     assert missing_cd
                     cd_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
                     missing_cd = False
@@ -167,7 +169,7 @@ def read_struct(
             atoms.append((atom.x_coord, atom.y_coord, atom.z_coord))
             residues_name.append(atom.residue_name)
             name.append(n)
-            is_side_chain.append(True if n in side_chain_atom_names else False)
+            #is_side_chain.append(True if n in side_chain_atom_names else False)
 
         # residue description for error messages
         tmp_res_text = f"{chainid}:{res_name}-{resid}"
@@ -192,6 +194,7 @@ def read_struct(
             cd_xyz.append(nan_xyz)
 
     # check per atom containers
+    is_side_chain = residues_name # quick fix for assert. is_side_chain is not used.
     assert len(set(map(len, [residues_name, is_side_chain, atoms, name]))) == 1, (
         f"All per-atom lists must have equal length, got lengths: "
         f"res_name={len(residues_name)}, side_chain={len(is_side_chain)}, "
@@ -260,11 +263,10 @@ def read_struct(
     sidechain_dih = sidechain_dihedral(res_n, res_ca, res_cb, res_cg, res_cd)
     
     # backbone diheral angles does not make sens when sequence is discontinious
-    is_prev_res_seq = (res_number - res_number.roll(1)).abs() != 1
-    is_next_res_seq = (res_number - res_number.roll(-1)).abs() != 1
-
-    backbone_dih[is_prev_res_seq, 0] = float("nan")
-    backbone_dih[is_next_res_seq, 1] = float("nan")
+    #is_prev_res_seq = (res_number - res_number.roll(1)).abs() != 1
+    #is_next_res_seq = (res_number - res_number.roll(-1)).abs() != 1
+    #backbone_dih[is_prev_res_seq, 0] = float("nan")
+    #backbone_dih[is_next_res_seq, 1] = float("nan")
     
     # residue-residue interactions on atomic level
     # this part needs to be checked
@@ -406,7 +408,7 @@ def read_struct(
         distancemx=th.stack((ca_dist, cb_dist), dim=2),
         residueid=res_number,
         chainids=chainids,
-        with_interactions=with_interactions,
+        with_interactions=with_interactions
     )
 
 
@@ -417,7 +419,3 @@ def edge_embedding_to_3d_tensor(u, v, emb):
     contacts[u, v] = emb_normed
     return contacts
 
-
-if __name__ == "__main__":
-    file = "../tests/data/3sxw.pdb.gz"
-    _, _, _, _ = read_struct(file, "A", t=7)

@@ -37,7 +37,7 @@ C_DELTA = {
     "SD"                         # S-δ (MET)
 }
 
-# rules to select CG and CD atoms from various amino-acid side
+# FIX: rules to select CG and CD atoms from various amino-acid side
 # atom wykorzystywany do χ1  (N-CA-CB-Cγ)
 gamma_choice = {
     "ARG": "CG",
