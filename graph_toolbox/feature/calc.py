@@ -30,6 +30,8 @@ from .params import (
     C_DELTA,
     C_GAMMA,
     aa_trans,
+    gamma_choice,
+    delta_choice
 )
 
 
@@ -79,10 +81,13 @@ def read_struct(
 
     Args:
         pdb_loc (pd.DataFrame): dataframe of parsed PDB structure
-        t (float): contact distance threshold
+        t (float): CA contact distance threshold
         with_interactions (bool): whether to use add reside-residue interactions features
     return u, v for feats
     """
+
+    if with_interactions:
+        raise ValueError('with_interactions option not yet implemented')
 
     data = pdbloc.sort_values(by=["chain_id", "residue_number"]).copy()
 
@@ -120,7 +125,7 @@ def read_struct(
         res_at_num.append(residue.shape[0])
         res_name = residue.iloc[0].residue_name
         res_per_res.append(res_name)
-
+        
         # iterate over atoms of a residue
         for _, atom in residue.iterrows():
 
@@ -142,14 +147,17 @@ def read_struct(
                 assert missing_n
                 n_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
                 missing_n = False
+                
             elif n in C_GAMMA:
-                assert missing_cg
-                cg_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
-                missing_cg = False
+                if n == gamma_choice[res_name]:  
+                    assert missing_cg
+                    cg_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
+                    missing_cg = False
             elif n in C_DELTA:
-                assert missing_cd
-                cd_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
-                missing_cd = False
+                if n == delta_choice[res_name]: 
+                    assert missing_cd
+                    cd_xyz.append((atom.x_coord, atom.y_coord, atom.z_coord))
+                    missing_cd = False
 
             # FIXME: why?
             elif len(n) == 3:
@@ -171,6 +179,7 @@ def read_struct(
 
         # chek Cb atom
         if missing_cb:
+            # gly does not have CB by definition
             if res_name != "GLY":
                 raise ValueError(f"missing Cb atom in {tmp_res_text}!")
             else:
@@ -223,161 +232,171 @@ def read_struct(
 
     ca_dist = distance(res_ca)
     cb_dist = distance(res_cb)
-    # fill self distance to 0
+    
+    # fill self CA distance to 0
     ca_dist = ca_dist.fill_diagonal_(0)
+
+    # fill self CB distance to 0
+    cb_dist = cb_dist.fill_diagonal_(0)
+
+    # define CA contacts (row and column indexes) below the cut-off parameter `t`
     u, v = th.where(ca_dist < t)
 
+    # is_seq[i, j] stores the sequence distance |i - j| between residue indices; 
+    # shape: (num_residues, num_residues)
     res_id_short = th.arange(0, num_residues)
     is_seq = th.abs(res_id_short.unsqueeze(0) - res_id_short.unsqueeze(1))
-    is_self = is_seq == 0
-    is_seq_0 = is_seq == 1
-    is_seq_1 = is_seq > 5
-    # turns usually consider 3 to 5
-    is_struct_0 = is_seq > 1
 
-    feats_res = th.stack((is_self, is_seq_0, is_seq_1, is_struct_0), dim=2)
-    feats_res = feats_res[u, v]
+    is_self = is_seq == 0       # same residue (i == j)
+    is_seq_0 = is_seq == 1      # immediate sequential neighbors (|i - j| == 1)
+    is_seq_1 = is_seq > 5       # distant residues in sequence
+    is_struct_0 = is_seq > 1    # non-adjacent residues (|i - j| > 1)
+
+    feats_res = th.stack((is_self, is_seq_0, is_seq_1, is_struct_0), dim=2)  # shape: (N, N, 4), binary features per residue pair
+    feats_res = feats_res[u, v]  # shape: (num_pairs, 4), features for selected residue pairs (u, v)
+
     # dihedral angles
     backbone_dih = backbone_dihedral(res_n, res_ca, res_c)
     sidechain_dih = sidechain_dihedral(res_n, res_ca, res_cb, res_cg, res_cd)
+    
     # backbone diheral angles does not make sens when sequence is discontinious
     is_prev_res_seq = (res_number - res_number.roll(1)).abs() != 1
     is_next_res_seq = (res_number - res_number.roll(-1)).abs() != 1
 
     backbone_dih[is_prev_res_seq, 0] = float("nan")
     backbone_dih[is_next_res_seq, 1] = float("nan")
+    
     # residue-residue interactions on atomic level
+    # this part needs to be checked
     if with_interactions:
-        # indices of edges ad 2d tensor
-        uv = th.where(ca_dist < t)[0]
-        # hydrophobic residues mask
-        is_res_hf = [True if r in HYDROPHOBIC else False for r in residues_name]
+        pass
+        # # indices of edges ad 2d tensor
+        # uv = th.where(ca_dist < t)[0]
+        # # hydrophobic residues mask
+        # is_res_hf = [True if r in HYDROPHOBIC else False for r in residues_name]
 
-        # hydrogen bonds acceptors and donors atom mask
-        is_at_hb_a = [False] * num_atoms
-        is_at_hb_d = [False] * num_atoms
-        is_at_hb_ac = [True if at.startswith("C") else False for at in name]
-        is_at_hb_ad = [True if at.startswith("NH") else False for at in name]
+        # # hydrogen bonds acceptors and donors atom mask
+        # is_at_hb_a = [False] * num_atoms
+        # is_at_hb_d = [False] * num_atoms
+        # is_at_hb_ac = [True if at.startswith("C") else False for at in name]
+        # is_at_hb_ad = [True if at.startswith("NH") else False for at in name]
 
-        is_res_ar = is_atom_in_group(residues_name, AROMATIC, num_atoms)
-        is_res_cpi = is_atom_in_group(name, CATION_PI, num_atoms)
-        is_res_arg = is_atom_in_group(residues_name, "ARG", num_atoms)
+        # is_res_ar = is_atom_in_group(residues_name, AROMATIC, num_atoms)
+        # is_res_cpi = is_atom_in_group(name, CATION_PI, num_atoms)
+        # is_res_arg = is_atom_in_group(residues_name, "ARG", num_atoms)
 
-        # base atom names (CA,CB,C->C etc.)
-        name_base = [n[0] for n in name]
+        # # base atom names (CA,CB,C->C etc.)
+        # name_base = [n[0] for n in name]
 
-        # van der Waals
-        is_at_vdw_other = [False] * num_atoms
-        for i, (res, at) in enumerate(zip(residues_name, name)):
+        # # van der Waals
+        # is_at_vdw_other = [False] * num_atoms
+        # for i, (res, at) in enumerate(zip(residues_name, name)):
+        #     # residue level criteria
+        #     if res in VDW_ATOMS:  # przeciez tutaj sa tylko dwie reszty?
+        #         # atomic level criteria
+        #         if at in VDW_ATOMS[res]:
+        #             is_at_vdw_other[i] = True
+        #     # hbonds
+        #     if res in HYDROGEN_ACCEPTOR:
+        #         if at in HYDROGEN_ACCEPTOR[res]:
+        #             is_at_hb_a[i] = True
+        #     if res in HYDROGEN_DONOR:
+        #         if at in HYDROGEN_DONOR[res]:
+        #             is_at_hb_a[i] = True  # ????????? przeciez tutaj musi byc donor?
+        # is_at_vdw = [True if at in {"C", "S"} else False for at in name_base]
 
-            # print(i, res, at)
+        # # get Lennarda-Jones parameters
+        # at_vdw = [SIGMA[n] for n in name_base]
+        # sigma = th.FloatTensor(at_vdw)
 
-            # residue level criteria
-            if res in VDW_ATOMS:  # przeciez tutaj sa tylko dwie reszty?
-                # atomic level criteria
-                if at in VDW_ATOMS[res]:
-                    is_at_vdw_other[i] = True
-            # hbonds
-            if res in HYDROGEN_ACCEPTOR:
-                if at in HYDROGEN_ACCEPTOR[res]:
-                    is_at_hb_a[i] = True
-            if res in HYDROGEN_DONOR:
-                if at in HYDROGEN_DONOR[res]:
-                    is_at_hb_a[i] = True  # ????????? przeciez tutaj musi byc donor?
-        is_at_vdw = [True if at in {"C", "S"} else False for at in name_base]
+        # at_eps = [EPSILON[n] for n in name_base]
+        # at_id = th.LongTensor(at_eps)  # ?????? why id?
 
-        # sys.exit(-1)
+        # at_xyz = th.FloatTensor(atoms)
+        # at_dist = distance(at_xyz)
 
-        # get Lennarda-Jones parameters
-        at_vdw = [SIGMA[n] for n in name_base]
-        sigma = th.FloatTensor(at_vdw)
+        # at_is_side = th.BoolTensor(is_side_chain)
 
-        at_eps = [EPSILON[n] for n in name_base]
-        at_id = th.LongTensor(at_eps)  # ?????? why id?
+        # # hbonds acceptor donors
+        # at_is_hba = th.BoolTensor(is_at_hb_a) | th.BoolTensor(is_at_hb_ac)
+        # at_is_hbd = th.BoolTensor(is_at_hb_d) | th.BoolTensor(is_at_hb_ad)
 
-        at_xyz = th.FloatTensor(atoms)
-        at_dist = distance(at_xyz)
+        # # vdw
+        # at_is_vdw = th.BoolTensor(is_at_vdw) | th.BoolTensor(is_at_vdw_other)
 
-        at_is_side = th.BoolTensor(is_side_chain)
+        # # set inverse of the atom self distance to zero to avoid nan/inf when summing
+        # sigma_radii = sigma.view(-1, 1) + sigma.view(1, -1)
 
-        # hbonds acceptor donors
-        at_is_hba = th.BoolTensor(is_at_hb_a) | th.BoolTensor(is_at_hb_ac)
-        at_is_hbd = th.BoolTensor(is_at_hb_d) | th.BoolTensor(is_at_hb_ad)
+        # # === DEFINE EDGE FEATURES
 
-        # vdw
-        at_is_vdw = th.BoolTensor(is_at_vdw) | th.BoolTensor(is_at_vdw_other)
+        # # binary residue-residue interactions
+        # disulfde = (at_id == 4) & (at_dist < 2.2)  ### will be never 4!!!
+        # at_dist_5a = at_dist < 5.0
+        # hydrophobic = at_dist_5a & (at_is_side == False) & th.BoolTensor(is_res_hf)
+        # cation_pi = (at_dist < 6) & is_res_cpi
+        # arg_arg = at_dist_5a & is_res_arg
 
-        # set inverse of the atom self distance to zero to avoid nan/inf when summing
-        sigma_radii = sigma.view(-1, 1) + sigma.view(1, -1)
+        # # salt bridges
 
-        # === DEFINE EDGE FEATURES
+        # # SALT_BRIDGE_PAIRS = {
+        # #     ("ARG", "ASP"),
+        # #     ("ARG", "GLU"),
+        # #     ("LYS", "ASP"),
+        # #     ("LYS", "GLU"),
+        # # }
 
-        # binary residue-residue interactions
-        disulfde = (at_id == 4) & (at_dist < 2.2)  ### will be never 4!!!
-        at_dist_5a = at_dist < 5.0
-        hydrophobic = at_dist_5a & (at_is_side == False) & th.BoolTensor(is_res_hf)
-        cation_pi = (at_dist < 6) & is_res_cpi
-        arg_arg = at_dist_5a & is_res_arg
+        # is_at_sb_c1 = is_atom_in_group(name, SALT_BRIDGE_C1, num_atoms)
+        # is_res_sb_c1 = is_atom_in_group(residues_name, {"ARG", "LYS"}, num_atoms)
+        # is_at_sb_c2 = is_atom_in_group(
+        #     name, {"ARG", "GLU"}, num_atoms
+        # )  ## ARG? should be ASP?
+        # is_res_sb_c2 = is_atom_in_group(residues_name, SALT_BRIDGE_C2, num_atoms)
 
-        # salt bridges
+        # sb_tmp1 = th.BoolTensor(is_at_sb_c1).view(-1, 1) & th.BoolTensor(
+        #     is_at_sb_c2
+        # ).view(1, -1)
+        # sb_tmp2 = th.BoolTensor(is_res_sb_c1).view(-1, 1) & th.BoolTensor(
+        #     is_res_sb_c2
+        # ).view(1, -1)
 
-        # SALT_BRIDGE_PAIRS = {
-        #     ("ARG", "ASP"),
-        #     ("ARG", "GLU"),
-        #     ("LYS", "ASP"),
-        #     ("LYS", "GLU"),
-        # }
+        # salt_bridge = sb_tmp1 & (at_dist < 5.0) & sb_tmp2
 
-        is_at_sb_c1 = is_atom_in_group(name, SALT_BRIDGE_C1, num_atoms)
-        is_res_sb_c1 = is_atom_in_group(residues_name, {"ARG", "LYS"}, num_atoms)
-        is_at_sb_c2 = is_atom_in_group(
-            name, {"ARG", "GLU"}, num_atoms
-        )  ## ARG a nie ASP????
-        is_res_sb_c2 = is_atom_in_group(residues_name, SALT_BRIDGE_C2, num_atoms)
+        # # hbonds
+        # hbond = at_is_hba.view(-1, 1) & at_is_hbd.view(1, -1) & (at_dist < 3.5)
 
-        sb_tmp1 = th.BoolTensor(is_at_sb_c1).view(-1, 1) & th.BoolTensor(
-            is_at_sb_c2
-        ).view(1, -1)
-        sb_tmp2 = th.BoolTensor(is_res_sb_c1).view(-1, 1) & th.BoolTensor(
-            is_res_sb_c2
-        ).view(1, -1)
+        # # vdw interactions
+        # vdw = ((at_dist - sigma_radii) < 0.5) & at_is_vdw
 
-        salt_bridge = sb_tmp1 & (at_dist < 5.0) & sb_tmp2
+        # # define edge features
+        # feats = th.cat(
+        #     (
+        #         disulfde.unsqueeze(2),
+        #         hydrophobic.unsqueeze(2),
+        #         cation_pi.unsqueeze(2),
+        #         arg_arg.unsqueeze(2),
+        #         salt_bridge.unsqueeze(2),
+        #         hbond.unsqueeze(2),
+        #         vdw.unsqueeze(2),
+        #     ),
+        #     dim=2,
+        # )
 
-        # hbonds
-        hbond = at_is_hba.view(-1, 1) & at_is_hbd.view(1, -1) & (at_dist < 3.5)
+        # # residue level features
+        # efeat_list = list()
 
-        # vdw interactions
-        vdw = ((at_dist - sigma_radii) < 0.5) & at_is_vdw
-
-        # define edge features
-        feats = th.cat(
-            (
-                disulfde.unsqueeze(2),
-                hydrophobic.unsqueeze(2),
-                cation_pi.unsqueeze(2),
-                arg_arg.unsqueeze(2),
-                salt_bridge.unsqueeze(2),
-                hbond.unsqueeze(2),
-                vdw.unsqueeze(2),
-            ),
-            dim=2,
-        )
-
-        # residue level features
-        efeat_list = list()
-
-        first_dim_split = feats.split(res_at_num, 0)
-        for i in range(len(res_at_num)):
-            efeat_list.extend(list(first_dim_split[i].split(res_at_num, 1)))
-        # sum only for residues within threshold
-        feats_at = th.cat([efeat_list[e].sum((0, 1), keepdim=True) for e in uv], dim=0)
-        th.clamp(feats_at, min=0, max=1, out=feats_at)
-        # gather residue level feature, such as edge criteria
-        efeats = th.cat((feats_at.float().squeeze(), feats_res), dim=-1)
+        # first_dim_split = feats.split(res_at_num, 0)
+        # for i in range(len(res_at_num)):
+        #     efeat_list.extend(list(first_dim_split[i].split(res_at_num, 1)))
+        # # sum only for residues within threshold
+        # feats_at = th.cat([efeat_list[e].sum((0, 1), keepdim=True) for e in uv], dim=0)
+        # th.clamp(feats_at, min=0, max=1, out=feats_at)
+        # # gather residue level feature, such as edge criteria
+        # efeats = th.cat((feats_at.float().squeeze(), feats_res), dim=-1)
     else:
-        # without interactions edge features are only binary labels about structural or sequential contacts
+        # without full interaction descriptiors
+        # edge features are only binary labels about structural or sequential contacts
         efeats = feats_res
+        
     return StructFeats(
         u,
         v,
