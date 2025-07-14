@@ -17,7 +17,9 @@ CONTACT_TYPE_FEATS = [  #'cx','cy','cz', 'ljx', 'ljy', 'ljz',
 ]
 
 FEATNAME = INTERACTION_FEATS + CONTACT_TYPE_FEATS
-NFEATNAME = ["psi", "phi", "omega", "chi1", "chi2"]
+
+# fix order
+NFEATNAME = ["phi", "psi", "omega", "chi1", "chi2"]
 
 # source: http://www.mlb.co.jp/linux/science/garlic/doc/commands/dihedrals.html
 #C_GAMMA = {"CG", "CG1", "OG", "OG1", "SG"}
