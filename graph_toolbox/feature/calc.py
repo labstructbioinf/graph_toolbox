@@ -9,6 +9,7 @@ from typing import List, Optional
 sys.path.append("..")
 import pandas as pd
 import torch as th
+import numpy as np
 
 #from biopandas.pdb import PandasPdb
 
@@ -223,7 +224,10 @@ def read_struct(
 
     num_atoms = len(name)  # number of atoms in the structure
     num_residues = len(res_per_res)  # number of residues in the structure
-    res_number = th.LongTensor(residues)  # list of residue ids
+    
+    # identyfikatory reszt i łańcuchów (zeby mialy potrzebna potem funkcje roll)
+    res_number   = th.LongTensor(residues)        # numery reszt (torch)
+    res_chain_np = np.array(chainids)             # łańcuchy jako numpy array
 
     # convert residue level atoms coordinates to tensors
     res_ca = th.FloatTensor(ca_xyz)
@@ -262,12 +266,26 @@ def read_struct(
     backbone_dih = backbone_dihedral(res_n, res_ca, res_c)
     sidechain_dih = sidechain_dihedral(res_n, res_ca, res_cb, res_cg, res_cd)
     
-    # backbone diheral angles does not make sens when sequence is discontinious
-    #is_prev_res_seq = (res_number - res_number.roll(1)).abs() != 1
-    #is_next_res_seq = (res_number - res_number.roll(-1)).abs() != 1
-    #backbone_dih[is_prev_res_seq, 0] = float("nan")
-    #backbone_dih[is_next_res_seq, 1] = float("nan")
+    # backbone dihedral angles do not make sense when sequence is discontinuous
+
+    # --- maska „dziur w numeracji” (torch)
+    is_prev_num_gap = (res_number - res_number.roll(1)).abs() != 1
+    is_next_num_gap = (res_number - res_number.roll(-1)).abs() != 1
     
+    # --- maska „zmiany łańcucha” (numpy)
+    is_prev_chain_gap = res_chain_np != np.roll(res_chain_np, 1)
+    is_next_chain_gap = res_chain_np != np.roll(res_chain_np, -1)
+    is_prev_chain_gap[0]  = True   # brak poprzednika
+    is_next_chain_gap[-1] = True   # brak następcy
+    
+    # --- łączymy obie maski
+    is_prev_break = is_prev_num_gap | th.from_numpy(is_prev_chain_gap)
+    is_next_break = is_next_num_gap | th.from_numpy(is_next_chain_gap)
+    
+    # --- zamieniamy niesensowne kąty na NaN
+    backbone_dih[is_prev_break, 0] = float("nan")   # φ
+    backbone_dih[is_next_break, 1] = float("nan")   # ψ
+        
     # residue-residue interactions on atomic level
     # this part needs to be checked
     if with_interactions:
