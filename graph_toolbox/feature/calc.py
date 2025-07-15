@@ -258,8 +258,8 @@ def read_struct(
     is_seq_0 = is_seq == 1      # immediate sequential neighbors (|i - j| == 1)
     is_seq_1 = is_seq > 5       # distant residues in sequence
     is_struct_0 = is_seq > 1    # non-adjacent residues (|i - j| > 1)
-
     feats_res = th.stack((is_self, is_seq_0, is_seq_1, is_struct_0), dim=2)  # shape: (N, N, 4), binary features per residue pair
+    
     feats_res = feats_res[u, v]  # shape: (num_pairs, 4), features for selected residue pairs (u, v)
 
     # dihedral angles
