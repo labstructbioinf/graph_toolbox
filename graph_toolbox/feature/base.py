@@ -103,7 +103,7 @@ class GraphData:
 
     @classmethod
     def from_h5(
-        cls, path: str, key: str, ca_threshold=7, with_interactions: bool = True
+        cls, path: str, key: str, ca_threshold=7, with_interactions: bool = True, order=[]
     ) -> "GraphData":
         """
         Args:
@@ -114,7 +114,7 @@ class GraphData:
         """
         atoms = pd.read_hdf(path, key=key, mode="r")
         structdata = read_struct(
-            atoms, t=ca_threshold, with_interactions=with_interactions
+            atoms, t=ca_threshold, with_interactions=with_interactions, order=order
         )
         return cls(path=path, code=key, **structdata.asdict())
 

@@ -78,15 +78,31 @@ nan_xyz = (nan_type, nan_type, nan_type)
 
 
 def read_struct(
-    pdbloc: pd.DataFrame, t: Optional[float] = 8, with_interactions=False
+    pdbloc: pd.DataFrame,
+    t: Optional[float] = 8.0,
+    with_interactions: bool = False,
+    order: list = [],
 ) -> StructFeats:
     """
+    Parses structural features from a PDB dataframe.
 
-    Args:
-        pdb_loc (pd.DataFrame): dataframe of parsed PDB structure
-        t (float): CA contact distance threshold
-        with_interactions (bool): whether to use add reside-residue interactions features
-    return u, v for feats
+    Parameters
+    ----------
+    pdbloc : pd.DataFrame
+        DataFrame representing the parsed PDB structure, with at least 'chain_id',
+        'residue_number', and 'atom_name' columns.
+    t : float, optional
+        Distance threshold (in Å) for defining CA-CA contacts. Default is 8.0.
+    with_interactions : bool, optional
+        If True, include additional residue-residue interaction features.
+    order : list of tuple, optional
+        Optional list specifying the desired order of residues as (residue_number, chain_id).
+        If empty, residues are processed in the order they appear in the DataFrame (groupby).
+
+    Returns
+    -------
+    StructFeats
+        An object containing structural features (e.g., node and edge information).
     """
 
     if with_interactions:
@@ -111,10 +127,38 @@ def read_struct(
     #is_side_chain = list()
     atoms, name = list(), list()
 
-    # iterate over residues
-    for res_enum, ((chainid, resid), residue) in enumerate(
-        data.groupby(["chain_id", "residue_number"])
-    ):
+    # Group residues
+    groups = data.groupby(["residue_number", "chain_id"])
+    
+    # Prepare the iterator based on whether 'order' is provided
+    if order:
+        order = list(map(tuple, order))  # ensure hashable and consumable multiple times
+    
+        assert set(order) == set(groups.groups.keys()), \
+            "'order' must contain exactly the same (residue_number, chain_id) pairs as in 'data'."
+    
+        # Create iterator with ordered access using precomputed groups
+        residue_iterator = (
+            (i, ((res_id, chain_id), groups.get_group((res_id, chain_id))))
+            for i, (res_id, chain_id) in enumerate(order)
+        )
+    else:
+        # Default iterator (natural groupby order)
+        residue_iterator = (
+            (i, ((res_id, chain_id), residue))
+            for i, ((res_id, chain_id), residue) in enumerate(groups)
+        )
+    
+    ## iterate over residues
+    #for res_enum, ((chainid, resid), residue) in enumerate(
+    #    data.groupby(["chain_id", "residue_number"])
+    #):
+
+    #print(list(residue_iterator))
+
+    # use adaptative iterator
+    for res_enum, ((resid, chainid), residue) in residue_iterator:
+    
         missing_ca = True
         missing_cb = True
         missing_c = True
