@@ -17,10 +17,73 @@ CONTACT_TYPE_FEATS = [  #'cx','cy','cz', 'ljx', 'ljy', 'ljz',
 ]
 
 FEATNAME = INTERACTION_FEATS + CONTACT_TYPE_FEATS
-NFEATNAME = ["psi", "phi", "omega", "chi1", "chi2"]
+
+# fix order
+NFEATNAME = ["phi", "psi", "omega", "chi1", "chi2"]
+
 # source: http://www.mlb.co.jp/linux/science/garlic/doc/commands/dihedrals.html
-C_GAMMA = {"CG", "CG1", "OG", "OG1", "SG"}
-C_DELTA = {"CD", "OD1", "ND1", "SD"}
+#C_GAMMA = {"CG", "CG1", "OG", "OG1", "SG"}
+#C_DELTA = {"CD", "OD1", "ND1", "SD"}
+
+# FIX:
+C_GAMMA = {
+    "CG", "CG1", "CG2",  # uni- i rozgałęzione węgle
+    "OG", "OG1",         # O-γ (SER, THR)
+    "SG"                 # S-γ (CYS, MET)
+}
+
+C_DELTA = {
+    "CD", "CD1", "CD2",          # węgle δ
+    "ND1", "ND2",                # N-δ (HIS, ASN)
+    "OD1", "OD2",                # O-δ (ASP)
+    "SD"                         # S-δ (MET)
+}
+
+# FIX: rules to select CG and CD atoms from various amino-acid side
+# atom wykorzystywany do χ1  (N-CA-CB-Cγ)
+gamma_choice = {
+    "ARG": "CG",
+    "ASN": "CG",
+    "ASP": "CG",
+    "CYS": "SG",
+    "GLN": "CG",
+    "GLU": "CG",
+    "HIS": "CG",
+    "ILE": "CG1",
+    "LEU": "CG",
+    "LYS": "CG",
+    "MET": "CG",
+    "PHE": "CG",
+    "PRO": "CG",
+    "SER": "OG",
+    "THR": "OG1",
+    "TRP": "CG",
+    "TYR": "CG",
+    "VAL": "CG1"
+}
+
+# atom wykorzystywany do χ2  (CA-CB-Cγ-Cδ)
+delta_choice = {
+    "ARG": "CD",
+    "ASN": "OD1",    # kanonicznie pierwszy z pary O/N
+    "ASP": "OD1",
+    "GLN": "CD",
+    "GLU": "CD",
+    "HIS": "ND1",    # HIS nie ma CD1 — wybór heteroatomu ND1
+    "ILE": "CD1",
+    "LEU": "CD1",
+    "LYS": "CD",
+    "MET": "SD",
+    "PHE": "CD1",
+    "PRO": "CD",
+    "TRP": "CD1",
+    "TYR": "CD1",
+}
+
+
+
+
+
 BACKBONE = {"CA", "C", "N", "O"}
 HYDROPHOBIC = {"ALA", "VAL", "LEU", "ILE", "MET", "PHE", "TRP", "PRO", "TYR"}
 AROMATIC = {"TRP", "TYR", "PHE"}
