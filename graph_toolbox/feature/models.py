@@ -18,9 +18,9 @@ class StructFeats:
     nfeats: th.Tensor
     sequence: List[str]
     distancemx: th.Tensor
-    backbone_relrot: Optional[th.Tensor] = None
     residueid: th.Tensor
     chainids: List[str]
+    relative_rotations: Optional[th.Tensor] = None
     with_interactions: bool = field(default=True)
     edge_feature_names: list[str] = field(init=False)
 

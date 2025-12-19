@@ -78,7 +78,7 @@ nan_xyz = (nan_type, nan_type, nan_type)
 
 
 def read_struct(
-    pdbloc: pd.DataFrame, t: Optional[float] = None, with_interactions=True, with_relrot=True
+    pdbloc: pd.DataFrame, t: Optional[float] = None, with_interactions=True, with_relative_rotations=True, order: Optional[list] = None,
 ) -> StructFeats:
     """
     Parses structural features from a PDB dataframe.
@@ -457,7 +457,7 @@ def read_struct(
         # without full interaction descriptiors
         # edge features are only binary labels about structural or sequential contacts
         efeats = feats_res
-    if with_relrot:
+    if with_relative_rotations:
         backbone_rotations = calculate_relative_rotation_matrix(n=res_n, ca=res_ca, c=res_c)
     else:
         backbone_rotations = None
@@ -468,7 +468,7 @@ def read_struct(
         nfeats=th.cat((backbone_dih, sidechain_dih), dim=-1),
         sequence=res_per_res,
         distancemx=th.stack((ca_dist, cb_dist), dim=2),
-        backbone_rotations=backbone_rotations,
+        relative_rotations=backbone_rotations,
         residueid=res_number,
         chainids=chainids,
         with_interactions=with_interactions

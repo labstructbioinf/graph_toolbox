@@ -42,7 +42,7 @@ class GraphData:
         "nfeats",
         "sequence",
         "distancemx",
-        "backbone_rotations",
+        "relative_rotations",
         "residueid",
     ]
 
@@ -55,7 +55,7 @@ class GraphData:
         nfeats,
         sequence,
         distancemx,
-        backbone_rotations=None,
+        relative_rotations=None,
         residueid=None,
         chainids=None,
         with_interactions=True,
@@ -68,7 +68,7 @@ class GraphData:
         self.nfeats = nfeats
         self.efeatname = StructFeats.edge_features(with_interactions=with_interactions)
         self.num_nodes = nfeats.shape[0]
-        self.backbone_rotations=backbone_rotations
+        self.relative_rotations=relative_rotations
         self.efeats = efeats
         self.kwargs = kwargs
         self.distancemx = distancemx
@@ -106,7 +106,7 @@ class GraphData:
 
     @classmethod
     def from_h5(
-        cls, path: str, key: str, ca_threshold=7, with_interactions: bool = True, with_relrot: bool = False
+        cls, path: str, key: str, ca_threshold=7, with_interactions: bool = True, with_relative_rotations: bool = False
     ) -> "GraphData":
         """
         Args:
@@ -117,12 +117,12 @@ class GraphData:
         """
         atoms = pd.read_hdf(path, key=key, mode="r")
         structdata = read_struct(
-            atoms, t=ca_threshold, with_interactions=with_interactions, with_relrot=with_relrot
+            atoms, t=ca_threshold, with_interactions=with_interactions, with_relative_rotations=with_relative_rotations
         )
         return cls(path=path, code=key, **structdata.asdict())
 
     def to_dgl(
-        self, validate: bool = False, with_dist: bool = False, with_dssp: bool = False, with_relrot: bool = False
+        self, validate: bool = False, with_dist: bool = False, with_dssp: bool = False, with_relative_rotations: bool = False
     ) -> dgl.graph:
         """
         create graph from data
@@ -133,7 +133,7 @@ class GraphData:
         Returns:
             dgl.graph
         """
-        if with_relrot and not with_dist:
+        if with_relative_rotations and not with_dist:
             raise ValueError("with_dist and with_relrot are mutually exclusive")
         if validate:
             self.validate_ca_gaps()
@@ -159,8 +159,8 @@ class GraphData:
             g.ndata["dssp"] = dsspasint
         g.ndata["angles"] = self.nfeats
         g.edata["f"] = self.efeats
-        if with_dist and with_relrot:
-            return g, self.distancemx, self.backbone_rotations
+        if with_dist and with_relative_rotations:
+            return g, self.distancemx, self.relative_rotations
         elif with_dist:
             return g, self.distancemx
         else:
