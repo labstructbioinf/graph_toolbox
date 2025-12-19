@@ -45,8 +45,11 @@ class H5Handle:
     direct_read: bool = True
     filename: str
 
-    def __init__(self, filename: Union[str, Path]):
-
+    def __init__(self, filename: Union[str, Path], keep_open: bool = False):
+        """
+        Args:
+            keep_open (bool): if True keep file open
+        """
         filename = Path(filename)
         if not os.path.isfile(filename):
             with h5py.File(filename, "w") as hf:
@@ -106,6 +109,34 @@ class H5Handle:
                 return g, distancemx
             else:
                 return g
+
+    def read_graph_opt(self, code, with_dist=True, sdh=True):
+        """
+        Reads a graph from an HDF5 file and converts it into a DGLGraph.
+        """
+        with h5py.File(self.filename, "r") as hf:
+            key = key_from_code(code) if sdh else self.group_from_code(code)
+            try:
+                pdbsubgr = hf[key]
+                u = torch.from_numpy(pdbsubgr["u"])
+                v = torch.from_numpy(pdbsubgr["v"])
+                sequence = torch.from_numpy(pdbsubgr["sequence"])
+                nfeats = torch.from_numpy(pdbsubgr["nfeats"])
+                efeats = torch.from_numpy(pdbsubgr["efeats"])
+
+                g = dgl.graph((u, v), num_nodes=sequence.shape[0])
+                g.ndata["seq"] = sequence
+                g.ndata["angles"] = nfeats
+                g.edata["f"] = efeats
+
+                if with_dist:
+                    distancemx = torch.from_numpy(pdbsubgr["distancemx"])
+                    return g, distancemx
+                else:
+                    return g
+
+            except KeyError as e:
+                raise KeyError(f"Missing key {e} for group {key}")
 
     def read_key(self, code: str, key: str):
 

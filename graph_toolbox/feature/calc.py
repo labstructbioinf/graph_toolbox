@@ -12,7 +12,7 @@ from biopandas.pdb import PandasPdb
 
 from .models import StructFeats
 from .numeric import distance, backbone_dihedral, sidechain_dihedral
-
+from .rotary_matrix import calculate_relative_rotation_matrix
 from .params import (
     BACKBONE,
     HYDROPHOBIC,
@@ -73,7 +73,7 @@ def residue_atoms_criteria(iterator, criteria_dict: dict, storage: list):
 
 
 def read_struct(
-    pdbloc: pd.DataFrame, t: Optional[float] = None, with_interactions=True
+    pdbloc: pd.DataFrame, t: Optional[float] = None, with_interactions=True, with_relrot=True
 ) -> StructFeats:
     """
 
@@ -378,6 +378,10 @@ def read_struct(
     else:
         # without interactions edge features are only binary labels about structural or sequential contacts
         efeats = feats_res
+    if with_relrot:
+        backbone_rotations = calculate_relative_rotation_matrix(n=res_n, ca=res_ca, c=res_c)
+    else:
+        backbone_rotations = None
     return StructFeats(
         u,
         v,
@@ -385,6 +389,7 @@ def read_struct(
         nfeats=th.cat((backbone_dih, sidechain_dih), dim=-1),
         sequence=res_per_res,
         distancemx=th.stack((ca_dist, cb_dist), dim=2),
+        backbone_rotations=backbone_rotations,
         residueid=res_number,
         chainids=chainids,
         with_interactions=with_interactions,

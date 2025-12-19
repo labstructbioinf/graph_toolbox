@@ -1,5 +1,5 @@
 from dataclasses import dataclass, asdict, field
-from typing import List
+from typing import List, Optional
 
 import torch as th
 
@@ -18,6 +18,7 @@ class StructFeats:
     nfeats: th.Tensor
     sequence: List[str]
     distancemx: th.Tensor
+    backbone_relrot: Optional[th.Tensor] = None
     residueid: th.Tensor
     chainids: List[str]
     with_interactions: bool = field(default=True)
