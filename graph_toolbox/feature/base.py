@@ -264,6 +264,7 @@ class GraphData:
             "nfeats": self.nfeats.numpy(),
             "distancemx": self.distancemx.numpy(),
             "sequence": seqasint.numpy(),
+            "relative_rotations": self.relative_rotations.numpy()
         }
 
     @classmethod
