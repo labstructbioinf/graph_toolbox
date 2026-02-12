@@ -42,7 +42,8 @@ class GraphData:
         "nfeats",
         "sequence",
         "distancemx",
-        "relative_rotations",
+        "backbone_relrot",
+        "sidechain_relrot",
         "residueid",
     ]
 
@@ -55,7 +56,8 @@ class GraphData:
         nfeats,
         sequence,
         distancemx,
-        relative_rotations=None,
+        backbone_relrot=None,
+        sidechain_relrot=None,
         residueid=None,
         chainids=None,
         with_interactions=True,
@@ -68,7 +70,8 @@ class GraphData:
         self.nfeats = nfeats
         self.efeatname = StructFeats.edge_features(with_interactions=with_interactions)
         self.num_nodes = nfeats.shape[0]
-        self.relative_rotations=relative_rotations
+        self.backbone_relrot = backbone_relrot
+        self.sidechain_relrot = sidechain_relrot
         self.efeats = efeats
         self.kwargs = kwargs
         self.distancemx = distancemx
@@ -160,7 +163,7 @@ class GraphData:
         g.ndata["angles"] = self.nfeats
         g.edata["f"] = self.efeats
         if with_dist and with_relative_rotations:
-            return g, self.distancemx, self.relative_rotations
+            return g, self.distancemx, self.backbone_relrot, self.sidechain_relrot
         elif with_dist:
             return g, self.distancemx
         else:
@@ -264,7 +267,8 @@ class GraphData:
             "nfeats": self.nfeats.numpy(),
             "distancemx": self.distancemx.numpy(),
             "sequence": seqasint.numpy(),
-            "relative_rotations": self.relative_rotations.numpy()
+            "backbone_relrot": self.backbone_relrot.numpy() if self.backbone_relrot is not None else None,
+            "sidechain_relrot": self.sidechain_relrot.numpy() if self.sidechain_relrot is not None else None,
         }
 
     @classmethod
