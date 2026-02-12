@@ -55,33 +55,59 @@ class H5Handle:
             with h5py.File(filename, "w") as hf:
                 pass
         self.filename = filename
+        self._hf = None
+        if keep_open:
+            self._hf = h5py.File(self.filename, "a")
+
+    def _open(self, mode="r"):
+        if self._hf is not None:
+            return self._hf
+        return h5py.File(self.filename, mode)
+
+    def _close(self, hf):
+        if hf is not self._hf:
+            hf.close()
+
+    def close(self):
+        """Close the persistently held file handle, if any."""
+        if self._hf is not None:
+            self._hf.close()
+            self._hf = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
 
     # https://github.com/harvardnlp/botnet-detection/blob/master/graph_data_storage.md
     def write_graph(self, g: GraphData, direct_code: bool = False):
         """
         with use_code g.code is a direct key
         """
-        if direct_code:
-            with h5py.File(self.filename, "a") as hf:
+        hf = self._open(mode="a")
+        try:
+            if direct_code:
                 pdbgr = hf.require_group(g.code)
-                pdbgr.attrs["is_valid"] = False
-                for key, val in g.to_h5().items():
-                    pdbgr.create_dataset(name=key, data=val)
-                pdbgr.attrs["is_valid"] = True
-        else:
-            group = self.group_from_code(g.code)
-            with h5py.File(self.filename, "a") as hf:
+            else:
+                group = self.group_from_code(g.code)
                 pdbgr = hf.require_group(group)
-                pdbgr.attrs["is_valid"] = False
-                for key, val in g.to_h5().items():
-                    pdbgr.create_dataset(name=key, data=val)
-                pdbgr.attrs["is_valid"] = True
+            pdbgr.attrs["is_valid"] = False
+            for key, val in g.to_h5().items():
+                pdbgr.create_dataset(name=key, data=val)
+            pdbgr.attrs["is_valid"] = True
+        finally:
+            self._close(hf)
 
     def read_graph(self, code, with_dist=True, sdh=True):
         """
         if size is none read all record from start to the end
         """
-        with h5py.File(self.filename, "r") as hf:
+        hf = self._open(mode="r")
+        try:
             if sdh:
                 key = key_from_code(code)
                 pdbsubgr = hf[key]
@@ -104,17 +130,20 @@ class H5Handle:
                 g.ndata["angles"] = nfeats
                 g.edata["f"] = efeats
             except KeyError as e:
-                raise KeyError(f"missing {e} for gr {group}")
+                raise KeyError(f"missing {e} for gr {key if sdh else group}")
             if with_dist:
                 return g, distancemx
             else:
                 return g
+        finally:
+            self._close(hf)
 
     def read_graph_opt(self, code, with_dist=True, sdh=True):
         """
         Reads a graph from an HDF5 file and converts it into a DGLGraph.
         """
-        with h5py.File(self.filename, "r") as hf:
+        hf = self._open(mode="r")
+        try:
             key = key_from_code(code) if sdh else self.group_from_code(code)
             try:
                 pdbsubgr = hf[key]
@@ -137,45 +166,53 @@ class H5Handle:
 
             except KeyError as e:
                 raise KeyError(f"Missing key {e} for group {key}")
+        finally:
+            self._close(hf)
 
     def read_key(self, code: str, key: str):
-
-        with h5py.File(self.filename, "r") as hf:
+        hf = self._open(mode="r")
+        try:
             group = self.group_from_code(code)
             return hf[group][key][:]
+        finally:
+            self._close(hf)
 
     def write_corrupted(self, code):
-        with h5py.File(self.filename, "a") as hf:
+        hf = self._open(mode="a")
+        try:
             pdbgr = hf.require_group(self.error_group)
             pdbgr.attrs["is_valid"] = False
+        finally:
+            self._close(hf)
 
     def group_from_code(self, code):
         """
         locate h5 group based on code
         """
-        print(code)
         pdb, _, _ = code.split("_")
         preffix = pdb[:2]
-        # group = f"{preffix}/{pdb}/{code}"
         group = f"{preffix}/{pdb}/{code}"
         return group
 
     @property
     def pdbs(self) -> list:
-        with h5py.File(self.filename, "r") as hf:
+        hf = self._open(mode="r")
+        try:
             pdbs = list(hf.keys())
+        finally:
+            self._close(hf)
         return pdbs
 
     @property
     def codes(self) -> list:
         # https://stackoverflow.com/questions/51548551/reading-nested-h5-group-into-numpy-array
-        with h5py.File(self.filename, "r") as hf:
+        hf = self._open(mode="r")
+        try:
             valid_codes = list()
             preffix = hf.keys()
             for pre in preffix:
                 hfpdb = hf[pre]
                 pdbs = hfpdb.keys()
-                # breakpoint()
                 for pdb in pdbs:
                     cursor = hfpdb[pdb]
                     if not isinstance(cursor, h5py.Group):
@@ -184,13 +221,19 @@ class H5Handle:
                     for code in codes:
                         if cursor[code].attrs.get("is_valid", False):
                             valid_codes.append(code)
+        finally:
+            self._close(hf)
         return valid_codes
 
     @property
     def invalid(self) -> list:
-        with h5py.File(self.filename, "a") as hf:
+        hf = self._open(mode="a")
+        try:
             error_grp = hf.require_group(self.error_group)
-            return list(error_grp.keys())
+            result = list(error_grp.keys())
+        finally:
+            self._close(hf)
+        return result
 
 
 class EmbH5Handle:
@@ -200,12 +243,39 @@ class EmbH5Handle:
     direct_read: bool = True
     filename: str
 
-    def __init__(self, filename: Union[str, os.PathLike]):
+    def __init__(self, filename: Union[str, os.PathLike], keep_open: bool = False):
         self.filename = filename
         if not os.path.isfile(self.filename):
             os.makedirs(os.path.dirname(self.filename), exist_ok=True)
             with h5py.File(self.filename, "w") as hf:
                 pass
+        self._hf = None
+        if keep_open:
+            self._hf = h5py.File(self.filename, "a")
+
+    def _open(self, mode="r"):
+        if self._hf is not None:
+            return self._hf
+        return h5py.File(self.filename, mode)
+
+    def _close(self, hf):
+        if hf is not self._hf:
+            hf.close()
+
+    def close(self):
+        """Close the persistently held file handle, if any."""
+        if self._hf is not None:
+            self._hf.close()
+            self._hf = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
 
     @staticmethod
     def key_from_hindex(hindex):
@@ -217,7 +287,8 @@ class EmbH5Handle:
     def write(self, emb, code, sdh=True):
         if not sdh:
             pdb, chain, hnum = code.split("_")
-        with h5py.File(self.filename, "a") as hf:
+        hf = self._open(mode="a")
+        try:
             hf.create_dataset(
                 code,
                 shape=emb.shape,
@@ -225,14 +296,22 @@ class EmbH5Handle:
                 dtype=np.float16,
                 compression="gzip",
             )
+        finally:
+            self._close(hf)
 
     def read(self, code, sdh=True) -> torch.Tensor:
         if not sdh:
             pdb, chain, hnum = code.split("_")
-        with h5py.File(self.filename, "a") as hf:
+        hf = self._open(mode="r")
+        try:
             return torch.from_numpy(hf[code][:])
+        finally:
+            self._close(hf)
 
     @property
     def codes(self) -> list:
-        with h5py.File(self.filename, "r") as hf:
+        hf = self._open(mode="r")
+        try:
             return list(hf.keys())
+        finally:
+            self._close(hf)

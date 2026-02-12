@@ -74,10 +74,59 @@ def relative_rotation(R: torch.Tensor) -> torch.Tensor:
     
     return pairwise_rotations
 
-def calculate_relative_rotation_matrix(n, ca, c):
+def calculate_relative_rotation_matrix(n: torch.Tensor, ca: torch.Tensor, c: torch.Tensor):
+    """
+    calculates relative rotations for each residue pair for a given tensor of atoms
+    Returns:
+        torch.Tensor: (N, N, 3, 3)
+    """
     R = get_backbone_rotation_matrices(n, ca, c)
     Relij = relative_rotation(R)
     return Relij
+
+def get_sidechain_rotation_matrices(ca: torch.Tensor, cb: torch.Tensor, cg: torch.Tensor):
+    """
+    Constructs a local rotation matrix for the side chain (chi1 level).
+    
+    Args:
+        ca, cb, cg: Tensors of shape (Residues, 3) 
+                    Note: For Glycine, CG is usually approximated or ignored.
+                
+    Returns:
+        rot_matrices: (Residues, 3, 3) - Local side-chain frame to Global.
+    """
+    # 1. Primary axis (X-axis): CA -> CB bond
+    v1 = cb - ca
+    u = F.normalize(v1, dim=-1)
+
+    # 2. Secondary vector: CB -> CG to define the chi1 plane
+    v2 = cg - cb
+    
+    # 3. Z-axis: Normal to the CA-CB-CG plane
+    cross_prod = torch.cross(u, v2, dim=-1)
+    w = F.normalize(cross_prod, dim=-1)
+
+    # 4. Y-axis: Orthonormal completion
+    v = torch.cross(w, u, dim=-1)
+
+    # Stack to form (Residues, 3, 3)
+    rot_matrices = torch.stack([u, v, w], dim=-1)
+    
+    return rot_matrices
+
+def calculate_relative_sidechain_rotation(ca: torch.Tensor, cb: torch.Tensor, cg: torch.Tensor):
+    """
+    Calculates relative rotations between all side-chain frames.
+    """
+    R_sc = get_sidechain_rotation_matrices(ca, cb, cg)
+    
+    # Reusing your efficient relative_rotation logic
+    # Ri_T @ Rj
+    Ri_T = R_sc.unsqueeze(1).transpose(-1, -2)
+    Rj = R_sc.unsqueeze(0)
+    
+    return torch.matmul(Ri_T, Rj)
+    
 
 # --- Example Usage ---
 if __name__ == "__main__":
@@ -99,4 +148,8 @@ if __name__ == "__main__":
     Relij = relative_rotation(R)
     print("relative rotation", Relij)
     print("shape", Relij.shape)
-    breakpoint()
+    
+    ca, cb, cg = torch.randn(num_residues, 3), torch.randn(num_residues, 3), torch.randn(num_residues, 3)
+    R = calculate_relative_sidechain_rotation(ca, cb, cg)
+    identity_check = torch.matmul(R, R.transpose(-1, -2))
+    print("\nOrthogonality check (first residue):\n", identity_check[0, 0])

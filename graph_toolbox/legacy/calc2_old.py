@@ -8,7 +8,7 @@ import pandas as pd
 pd.options.mode.chained_assignment = None  # default='warn'
 import torch as th
 from biopandas.pdb import PandasPdb
-from .params import (BACKBONE,
+from ..feature.params import (BACKBONE,
                     HYDROPHOBIC,
                      AROMATIC,
                      CATION_PI,

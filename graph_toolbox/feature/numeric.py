@@ -7,7 +7,7 @@ def distance(xyz1: th.Tensor, xyz2: Optional[th.Tensor] = None):
     if xyz2 is not None:
         return th.cdist(xyz1, xyz2)
     else:
-        return (xyz1.unsqueeze(0) - xyz1.unsqueeze(1)).pow(2).sum(-1).sqrt()
+        return th.cdist(xyz1, xyz1)
 
 
 @th.jit.script

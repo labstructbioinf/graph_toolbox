@@ -7,7 +7,7 @@ import atomium
 import pandas as pd
 import numpy as np
 import torch as th
-from .params import (BACKBONE,
+from ..feature.params import (BACKBONE,
                     HYDROPHOBIC,
                      AROMATIC,
                      CATION_PI,

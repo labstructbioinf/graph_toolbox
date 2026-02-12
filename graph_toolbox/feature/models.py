@@ -20,7 +20,8 @@ class StructFeats:
     distancemx: th.Tensor
     residueid: th.Tensor
     chainids: List[str]
-    relative_rotations: Optional[th.Tensor] = None
+    backbone_relrot: Optional[th.Tensor] = None
+    sidechain_relrot: Optional[th.Tensor] = None
     with_interactions: bool = field(default=True)
     edge_feature_names: list[str] = field(init=False)
 

@@ -106,7 +106,7 @@ class GraphData:
 
     @classmethod
     def from_h5(
-        cls, path: str, key: str, ca_threshold=7, with_interactions: bool = True, with_relative_rotations: bool = False
+        cls, path: str, key: str, ca_threshold=7, dssp: list[str] = None, with_interactions: bool = True, with_relative_rotations: bool = False
     ) -> "GraphData":
         """
         Args:
@@ -119,7 +119,7 @@ class GraphData:
         structdata = read_struct(
             atoms, t=ca_threshold, with_interactions=with_interactions, with_relative_rotations=with_relative_rotations
         )
-        return cls(path=path, code=key, **structdata.asdict())
+        return cls(path=path, code=key, dssp=dssp, **structdata.asdict())
 
     def to_dgl(
         self, validate: bool = False, with_dist: bool = False, with_dssp: bool = False, with_relative_rotations: bool = False
