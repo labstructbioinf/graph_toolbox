@@ -267,8 +267,8 @@ class GraphData:
             "nfeats": self.nfeats.numpy(),
             "distancemx": self.distancemx.numpy(),
             "sequence": seqasint.numpy(),
-            "backbone_relrot": self.backbone_relrot.numpy() if self.backbone_relrot is not None else None,
-            "sidechain_relrot": self.sidechain_relrot.numpy() if self.sidechain_relrot is not None else None,
+            "backbone_relrot": self.backbone_relrot.numpy(),
+            "sidechain_relrot": self.sidechain_relrot.numpy(),
         }
 
     @classmethod
