@@ -324,5 +324,6 @@ def read_struct_cc(
         residueid=res_number,
         chainids=chainids,
         with_interactions=with_interactions,
-        crossing_angle=crossing_angle
+        crossing_angle=crossing_angle,
+        segment_id=segment_ids
     )

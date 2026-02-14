@@ -73,6 +73,7 @@ class StructFeatsCC:
     with_interactions: bool = field(default=True)
     edge_feature_names: list[str] = field(init=False)
     crossing_angle: Optional[th.Tensor] = None
+    segment_id: Optional[th.Tensor] = None
 
     def __post_init__(self):
         if self.with_interactions:

@@ -48,6 +48,7 @@ class GraphData:
         "sidechain_relrot",
         "residueid",
         "crossing_angle",
+        "segment_id",
     ]
 
     def __init__(
@@ -65,6 +66,7 @@ class GraphData:
         chainids=None,
         with_interactions=True,
         crossing_angle=None,
+        segment_id=None,
         **kwargs,
     ):
         self.code = code
@@ -82,6 +84,7 @@ class GraphData:
         self.residueid = residueid
         self.chainids = chainids
         self.crossing_angle = crossing_angle
+        self.segment_id = segment_id
 
     @classmethod
     def from_pdb(
@@ -231,6 +234,7 @@ class GraphData:
             "sequence": seqasint.numpy(),
             "backbone_relrot": self.backbone_relrot.numpy(),
             "sidechain_relrot": self.sidechain_relrot.numpy(),
+            "segment_id": self.segment_id.numpy()
         }
 
     @classmethod
