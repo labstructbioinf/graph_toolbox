@@ -13,26 +13,13 @@ import numpy as np
 
 #from biopandas.pdb import PandasPdb
 
-from .models import StructFeats
+from .cc_specific import calculate_crossing_angle_torch
+from .models import StructFeats, StructFeatsCC
 from .numeric import compute_edge_features, distance, backbone_dihedral, sidechain_dihedral
 from .rotary_matrix import calculate_relative_rotation_matrix, calculate_relative_sidechain_rotation
 from .params import (
-    #BACKBONE,
-    #HYDROPHOBIC,
-    #AROMATIC,
-    #CATION_PI,
-    #SALT_BRIDGE_C1,
-    #SALT_BRIDGE_C2,
-    #CHARGE,
-    #SIGMA,
-    #EPSILON,
-    #HYDROGEN_ACCEPTOR,
-    #HYDROGEN_DONOR,
-    #VDW_RADIUS,
-    #VDW_ATOMS,
     C_DELTA,
     C_GAMMA,
-    #aa_trans,
     gamma_choice,
     delta_choice
 )
@@ -50,37 +37,11 @@ from .params import (
 
 nan_type = float("nan")
 nan_xyz = (nan_type, nan_type, nan_type)
-#atom_id = {ch: i for i, ch in enumerate(CHARGE.keys())}
-#EPS = th.Tensor([78 * 1e-2])  # unit Farad / angsterm
-#side_chain_atom_names = ["CA", "C", "N", "O"]
-#invalid_location = {"B", "C", "D"}
 
-
-# def is_atom_in_group(atoms: List[str], group: set, size: int) -> th.BoolTensor:
-#     arr = th.zeros(size, dtype=th.bool)
-#     for i, at in enumerate(atoms):
-#         if at in group:
-#             arr[i] = True
-#     return arr
-
-
-# def residue_atoms_criteria(iterator, criteria_dict: dict, storage: list):
-#     """
-#     iterates over structure and look for match in residue - atom level
-#     """
-#     for i, (res, at) in iterator:
-#         # residue level criteria
-#         if res in criteria_dict:
-#             # atomic level criteria
-#             if at in VDW_ATOMS[res]:
-#                 storage[i] = True
-#     return storage
-
-
-def read_struct(
+def read_struct_cc(
     pdbloc: pd.DataFrame, t: Optional[float] = None, with_interactions=True, with_relative_rotations=True, order: Optional[list] = None,
-    helix_mask: Optional[th.Tensor] = None
-) -> StructFeats:
+    helix_indices: Optional[th.Tensor] = None
+) -> StructFeatsCC:
     """
     Parses structural features from a PDB dataframe.
 
@@ -91,7 +52,7 @@ def read_struct(
         'residue_number', and 'atom_name' columns.
     t : float, optional
         Distance threshold (in Å) for defining CA-CA contacts. Default is 8.0.
-    with_interactions : bool, optional
+    helix_indices : bool, optional
         If True, include additional residue-residue interaction features.
     order : list of tuple, optional
         Optional list specifying the desired order of residues as (residue_number, chain_id).
@@ -99,7 +60,7 @@ def read_struct(
 
     Returns
     -------
-    StructFeats
+    StructFeatsCC
         An object containing structural features (e.g., node and edge information).
     """
 
@@ -279,6 +240,10 @@ def read_struct(
     res_cg = th.FloatTensor(cg_xyz)
     res_cd = th.FloatTensor(cd_xyz)
 
+    # binary mask of helix residues
+    segment_ids = th.ones(num_residues, dtype=th.long)
+    segment_ids[helix_indices] = 0
+
     ca_dist = distance(res_ca)
     cb_dist = distance(res_cb)
     
@@ -294,8 +259,8 @@ def read_struct(
     # is_seq[i, j] stores the sequence distance |i - j| between residue indices; 
     # shape: (num_residues, num_residues)
     res_id_short = th.arange(0, num_residues)
-    if helix_mask:
-        feats_res = compute_edge_features(res_number, res_chain_np, u, v)
+    if helix_indices is not None and helix_indices.numel() > 0:
+        feats_res = compute_edge_features(res_number, segment_id=segment_ids)
     else:
         
         is_seq = th.abs(res_id_short.unsqueeze(0) - res_id_short.unsqueeze(1))
@@ -331,7 +296,8 @@ def read_struct(
     # --- zamieniamy niesensowne kąty na NaN
     backbone_dih[is_prev_break, 0] = float("nan")   # φ
     backbone_dih[is_next_break, 1] = float("nan")   # ψ
-        
+    
+    crossing_angle, _, _ = calculate_crossing_angle_torch(res_ca, segment_ids)
     # residue-residue interactions on atomic level
     # this part needs to be checked
     if with_interactions:
@@ -346,7 +312,7 @@ def read_struct(
     else:
         backbone_rotations = None
         sidechain_rotations = None
-    return StructFeats(
+    return StructFeatsCC(
         u,
         v,
         efeats=efeats,
@@ -357,5 +323,6 @@ def read_struct(
         sidechain_relrot=sidechain_rotations,
         residueid=res_number,
         chainids=chainids,
-        with_interactions=with_interactions
+        with_interactions=with_interactions,
+        crossing_angle=crossing_angle
     )

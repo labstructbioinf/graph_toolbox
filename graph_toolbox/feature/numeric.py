@@ -1,6 +1,86 @@
 from typing import Optional
 import torch as th
 
+import math
+
+def compute_edge_features(res_index: th.Tensor, segment_id: th.Tensor) -> th.Tensor:
+    """
+    Args:
+        res_index: Tensor (N,) of residue indices (e.g., [1, 2, 3... 100, 101...])
+        segment_id: Tensor (N,) identifying the chain/helix (0 for central, 1 for env)
+    """
+    N = res_index.shape[0]
+    
+    # Broadcast to create N x N matrices
+    i_idx = res_index.view(-1, 1).expand(N, N)
+    j_idx = res_index.view(1, -1).expand(N, N)
+    
+    i_seg = segment_id.view(-1, 1).expand(N, N)
+    j_seg = segment_id.view(1, -1).expand(N, N)
+
+    # 1. Interaction Mask (Inter-helix vs Intra-helix)
+    # This replaces generic "structural" features. 
+    # It tells the GNN: "This edge is part of the packing interface."
+    is_interaction = (i_seg != j_seg).float() 
+    
+    # 2. Relative Sequence Distance (Signed)
+    # We only care about sequence distance if we are in the SAME segment.
+    diff = (i_idx - j_idx).float()
+    
+    # Mask out cross-chain distances (set them to a dummy value, e.g., 999)
+    # We use the interaction mask to zero out the diff where segments differ
+    diff = diff * (1 - is_interaction) + (is_interaction * 999)
+    abs_diff = th.abs(diff)
+
+    # --- UPDATED BINARY FEATURES ---
+    
+    # Basic Topology
+    is_self = (abs_diff == 0).float()
+    is_peptide = (abs_diff == 1).float()
+    
+    # Helical Periodicity (The "CC Detector" Features)
+    # Captures the i+3 and i+4 interactions defining the alpha-helix face
+    is_turn_3 = (abs_diff == 3).float()
+    is_turn_4 = (abs_diff == 4).float()
+    
+    # The Heptad Repeat (i to i+7)
+    # Crucial for identifying the long-range order of coiled-coils
+    is_heptad = (abs_diff == 7).float()
+
+    # Long range (residues far away in sequence but close in space)
+    is_long = (abs_diff > 7).float() * (1 - is_interaction)
+
+    # --- RELATIVE POSITIONAL ENCODING (Continuous) ---
+    
+    # Instead of just binary buckets, give the GNN the raw value.
+    # We use a sinusoidal encoding (like Transformers) to squash the distance
+    # into a range [-1, 1] while preserving high-frequency info.
+    # We map the distance k to: sin(k / timescale)
+    
+    # Only encode valid sequence distances (mask interactions)
+    # We clamp diff to avoid issues with the '999' dummy value
+    valid_diff = th.clamp(diff, min=-30, max=30) 
+    
+    rpe_sin = th.sin(valid_diff / 5.0) * (1 - is_interaction) # Scale of approx 1 turn
+    rpe_cos = th.cos(valid_diff / 5.0) * (1 - is_interaction)
+
+    # Stack all features
+    # Shape: (N, N, 9)
+    edge_feats = th.stack((
+        is_self,            # 0: Self
+        is_interaction,     # 1: Interface edge (CRITICAL for your task)
+        is_peptide,         # 2: i, i+1
+        is_turn_3,          # 3: i, i+3 (3-10 helix / tight turn)
+        is_turn_4,          # 4: i, i+4 (Alpha helix)
+        is_heptad,          # 5: i, i+7 (Coiled-coil register)
+        is_long,            # 6: >7 (Distal)
+        rpe_sin,            # 7: Continuous Pos Enc
+        rpe_cos             # 8: Continuous Pos Enc
+    ), dim=2)
+    
+    return edge_feats
+
+
 @th.jit.script
 def distance(xyz1: th.Tensor, xyz2: Optional[th.Tensor] = None):
 

@@ -8,8 +8,10 @@ import pandas as pd
 import torch
 import dgl
 
-from .calc import read_struct, StructFeats
+from graph_toolbox.feature.cc_specific import helix_indices_from_series
 
+from .calc import read_struct, StructFeats
+from .cc_calc import read_struct_cc, StructFeatsCC
 from .params import ACIDS_MAP_DEF, ACIDS_MAP_DEF3, SS_MAP_EXT, FEATNAME, NFEATNAME
 
 
@@ -25,7 +27,7 @@ class GraphObjectError(Exception):
 
 class GraphData:
     __version__ = "0.16relative_rotations"
-    metadata: dict = dict()
+    metadata: dict = {}
     efeats: torch.Tensor
     nfeats: torch.Tensor
     efeatname: List[str]
@@ -45,6 +47,7 @@ class GraphData:
         "backbone_relrot",
         "sidechain_relrot",
         "residueid",
+        "crossing_angle",
     ]
 
     def __init__(
@@ -61,6 +64,7 @@ class GraphData:
         residueid=None,
         chainids=None,
         with_interactions=True,
+        crossing_angle=None,
         **kwargs,
     ):
         self.code = code
@@ -77,6 +81,7 @@ class GraphData:
         self.distancemx = distancemx
         self.residueid = residueid
         self.chainids = chainids
+        self.crossing_angle = crossing_angle
 
     @classmethod
     def from_pdb(
@@ -122,7 +127,25 @@ class GraphData:
         structdata = read_struct(
             atoms, t=ca_threshold, with_interactions=with_interactions, with_relative_rotations=with_relative_rotations
         )
-        return cls(path=path, code=key, dssp=dssp, **structdata.asdict())
+        return cls(code=key, **structdata.asdict())
+
+    @classmethod
+    def from_h5_contrastive(cls, path: str, key: str, env_metadata, ca_threshold=7) -> "GraphData":
+        """
+        Contrastive learning approach with crossing angle and positional specific informations
+        Args:
+            path (str): path to .h5 file with coordinates
+            key (str): key within .h5 file pointing to desired protein
+            ca_threshold (float): ca-ca A threshold
+            env_metadata: pd.Series with values `env_index`, `chain_id` and `pdb_index` used to determine which helices are in the sample for contrastive learning
+        """
+        atoms = pd.read_hdf(path, key=key, mode="r")
+        helix_indices = helix_indices_from_series(env_metadata)
+        helix_indices = torch.LongTensor(helix_indices)
+        structdata = read_struct_cc(
+            atoms, t=ca_threshold, with_interactions=False, helix_indices=helix_indices
+        )
+        return cls(code=key, **structdata.asdict())
 
     def to_dgl(
         self, validate: bool = False, with_dist: bool = False, with_dssp: bool = False, with_relative_rotations: bool = False
@@ -169,54 +192,6 @@ class GraphData:
         else:
             return g
 
-    def to_dgl_angles(
-        self, validate: bool = False, with_dist: bool = False
-    ) -> dgl.graph:
-        """
-        create graph from data
-        node schema: `seq` (1, ) long, `dssp` (1, long), `angles` (4, ) float
-        edge schema `f` (11, ) bool
-        Args:
-            validate: (bool) if True validate against ca-ca discon
-        Returns:
-            dgl.graph
-        """
-        if validate:
-            self.validate_ca_gaps()
-        if len(self.sequence[0]) == 3:
-            seqasint = [ACIDS_MAP_DEF3[res] for res in self.sequence]
-        elif len(self.sequence[0]) == 1:
-            seqasint = [ACIDS_MAP_DEF[res] for res in self.sequence]
-        else:
-            raise TypeError(
-                f"invalid aa sequence letter: {self.sequence[0]} dictionary should be in one ore three letter code"
-            )
-
-        seqasint = torch.LongTensor(seqasint)
-
-        g = dgl.graph((self.u, self.v))
-        g.ndata["seq"] = seqasint
-        g.ndata["angles"] = self.nfeats
-        g.edata["f"] = self.efeats
-        if with_dist:
-            return g, self.distancemx
-        else:
-            return g
-
-    def validate_ca_gaps(self):
-        """
-        find gaps in Ca-Ca sequential connections
-        """
-        featid = self.efeatname.index("self")
-        breakpoint()
-        feat = self.efeats[:, featid].sum()
-        if feat <= self.efeats.shape[0]:
-            print(
-                f"feat: {feat} is below threshold {self.efeats.shape[0]}, path: {self.path}"
-            )
-            raise GraphObjectError(
-                "some CA-CA sequence connections are above given threshold"
-            )
 
     def to_edgedf(self) -> pd.DataFrame:
 
@@ -233,19 +208,6 @@ class GraphData:
         data["v"] = v
         data["u_resid"] = self.u.tolist()
         data["v_resid"] = self.v.tolist()
-        return data
-
-    def to_nodedf(self) -> pd.DataFrame:
-
-        feats = self.nfeats.numpy()
-        if feats.shape[1] != len(self.nfeatname):
-            raise GraphObjectError(
-                f"number of node features is different then featnames {feats.shape} and {self.nfeatname}"
-            )
-        data = pd.DataFrame(feats, columns=self.nfeatname)
-        data["residue"] = self.sequence
-        data["resid"] = self.residueid.numpy()
-        data["chain_id"] = self.chainids
         return data
 
     def to_h5(self) -> dict:
