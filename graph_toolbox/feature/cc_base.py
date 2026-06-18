@@ -26,7 +26,7 @@ class GraphObjectError(Exception):
 
 
 class GraphData:
-    __version__ = "0.17_spectral_edges"
+    __version__ = "0.16relative_rotations"
     metadata: dict = {}
     efeats: torch.Tensor
     nfeats: torch.Tensor

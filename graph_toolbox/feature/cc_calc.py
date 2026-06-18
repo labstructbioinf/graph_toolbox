@@ -13,9 +13,8 @@ import numpy as np
 
 #from biopandas.pdb import PandasPdb
 
-from .cc_specific import calculate_crossing_angle_torch
 from .models import StructFeats, StructFeatsCC
-from .numeric import compute_edge_features, distance, backbone_dihedral, sidechain_dihedral
+from .numeric import compute_edge_features, compute_edge_features_sparse, distance, backbone_dihedral, sidechain_dihedral
 from .rotary_matrix import calculate_relative_rotation_matrix, calculate_relative_sidechain_rotation
 from .params import (
     C_DELTA,
@@ -260,19 +259,9 @@ def read_struct_cc(
     # shape: (num_residues, num_residues)
     res_id_short = th.arange(0, num_residues)
     if helix_indices is not None and helix_indices.numel() > 0:
-        feats_res = compute_edge_features(res_number, segment_id=segment_ids)
+        efeats = compute_edge_features_sparse(res_number, segment_id=segment_ids, u=u, v=v)
     else:
-        
-        is_seq = th.abs(res_id_short.unsqueeze(0) - res_id_short.unsqueeze(1))
-
-        is_self = is_seq == 0       # same residue (i == j)
-        is_seq_0 = is_seq == 1      # immediate sequential neighbors (|i - j| == 1)
-        is_seq_1 = is_seq > 5       # distant residues in sequence
-        is_struct_0 = is_seq > 1    # non-adjacent residues (|i - j| > 1)
-        feats_res = th.stack((is_self, is_seq_0, is_seq_1, is_struct_0), dim=2)  # shape: (N, N, 4), binary features per residue pair
-        
-        feats_res = feats_res[u, v]  # shape: (num_pairs, 4), features for selected residue pairs (u, v)
-
+        raise NotImplementedError("edge features without helix_indices not implemented")
     # dihedral angles
     backbone_dih = backbone_dihedral(res_n, res_ca, res_c)
     sidechain_dih = sidechain_dihedral(res_n, res_ca, res_cb, res_cg, res_cd)
@@ -297,7 +286,6 @@ def read_struct_cc(
     backbone_dih[is_prev_break, 0] = float("nan")   # φ
     backbone_dih[is_next_break, 1] = float("nan")   # ψ
     
-    crossing_angle, _, _ = calculate_crossing_angle_torch(res_ca, segment_ids)
     # residue-residue interactions on atomic level
     # this part needs to be checked
     if with_interactions:
@@ -305,7 +293,7 @@ def read_struct_cc(
     else:
         # without full interaction descriptiors
         # edge features are only binary labels about structural or sequential contacts
-        efeats = feats_res
+        pass
     if with_relative_rotations:
         backbone_rotations = calculate_relative_rotation_matrix(n=res_n, ca=res_ca, c=res_c)
         sidechain_rotations = calculate_relative_sidechain_rotation(ca=res_ca, cb=res_cb, cg=res_cg)
@@ -324,6 +312,5 @@ def read_struct_cc(
         residueid=res_number,
         chainids=chainids,
         with_interactions=with_interactions,
-        crossing_angle=crossing_angle,
         segment_id=segment_ids
     )
