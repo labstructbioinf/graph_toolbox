@@ -39,7 +39,7 @@ class H5Handle:
     """
 
     dataset_attrs = {"compression": "lzf", "dtype": np.float32}
-    reqkeys = {"u", "v", "nfeats", "efeats", "sequence", "distancemx"}
+    reqkeys = {"u", "v", "nfeats", "efeats_flat", "sequence", "target", "segment_id"}
     numkeys = len(reqkeys)
     error_group: str = "errors"
     direct_read: bool = True
@@ -97,7 +97,7 @@ class H5Handle:
                 pdbgr = hf.require_group(group)
             pdbgr.attrs["is_valid"] = False
             for key, val in g.to_h5().items():
-                pdbgr.create_dataset(name=key, data=val)
+                pdbgr.create_dataset(name=key, data=val, compression="lzf")
             pdbgr.attrs["is_valid"] = True
         finally:
             self._close(hf)
@@ -119,11 +119,10 @@ class H5Handle:
                     pdbsubgr["v"][:]
                 )
                 sequence = torch.from_numpy(pdbsubgr["sequence"][:])
-                nfeats, efeats = torch.from_numpy(
-                    pdbsubgr["nfeats"][:]
-                ), torch.from_numpy(pdbsubgr["efeats"][:])
+                nfeats = torch.from_numpy(pdbsubgr["nfeats"][:])
+                efeats = torch.from_numpy(pdbsubgr["efeats_flat"][:])
                 if with_dist:
-                    distancemx = torch.from_numpy(pdbsubgr["distancemx"][:])
+                    target = torch.from_numpy(pdbsubgr["target"][:])
 
                 g = dgl.graph((u, v))
                 g.ndata["seq"] = sequence
@@ -132,7 +131,7 @@ class H5Handle:
             except KeyError as e:
                 raise KeyError(f"missing {e} for gr {key if sdh else group}")
             if with_dist:
-                return g, distancemx
+                return g, target
             else:
                 return g
         finally:
@@ -151,7 +150,7 @@ class H5Handle:
                 v = torch.from_numpy(pdbsubgr["v"])
                 sequence = torch.from_numpy(pdbsubgr["sequence"])
                 nfeats = torch.from_numpy(pdbsubgr["nfeats"])
-                efeats = torch.from_numpy(pdbsubgr["efeats"])
+                efeats = torch.from_numpy(pdbsubgr["efeats_flat"])
 
                 g = dgl.graph((u, v), num_nodes=sequence.shape[0])
                 g.ndata["seq"] = sequence
@@ -159,8 +158,8 @@ class H5Handle:
                 g.edata["f"] = efeats
 
                 if with_dist:
-                    distancemx = torch.from_numpy(pdbsubgr["distancemx"])
-                    return g, distancemx
+                    target = torch.from_numpy(pdbsubgr["target"])
+                    return g, target
                 else:
                     return g
 

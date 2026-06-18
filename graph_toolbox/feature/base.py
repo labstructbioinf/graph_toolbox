@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import pickle
 from biopandas.pdb import PandasPdb
 
+import numpy as np
 import pandas as pd
 import torch
 import dgl
@@ -132,7 +133,6 @@ class GraphData:
     @classmethod
     def from_h5_contrastive(cls, path: str, key: str, env_metadata, ca_threshold=7) -> "GraphData":
         """
-        Contrastive learning approach with crossing angle and positional specific informations
         Args:
             path (str): path to .h5 file with coordinates
             key (str): key within .h5 file pointing to desired protein
@@ -222,16 +222,20 @@ class GraphData:
             )
         seqasint = torch.LongTensor(seqasint)
 
+        N = self.distancemx.shape[0]
+        d  = self.distancemx.numpy()                           # [N, N, 1 or 2]
+        br = self.backbone_relrot.numpy().reshape(N, N, -1)    # [N, N, 9]
+        sr = self.sidechain_relrot.numpy().reshape(N, N, -1)   # [N, N, 9]
+        target = np.concatenate([d, br, sr], axis=-1).astype(np.float32)  # [N, N, 19]
+
         return {
-            "u": self.u.numpy(),
-            "v": self.v.numpy(),
-            "efeats": self.efeats.numpy(),
-            "nfeats": self.nfeats.numpy(),
-            "distancemx": self.distancemx.numpy(),
-            "sequence": seqasint.numpy(),
-            "backbone_relrot": self.backbone_relrot.numpy(),
-            "sidechain_relrot": self.sidechain_relrot.numpy(),
-            "segment_id": self.segment_id.numpy()
+            "u":           self.u.numpy(),
+            "v":           self.v.numpy(),
+            "efeats_flat": self.efeats.numpy().astype(np.float32),  # [E, D]
+            "nfeats":      self.nfeats.numpy(),
+            "sequence":    seqasint.numpy(),
+            "segment_id":  self.segment_id.numpy(),
+            "target":      target,
         }
 
     @classmethod
