@@ -15,7 +15,7 @@ import numpy as np
 
 from .models import StructFeats, StructFeatsCC
 from .numeric import compute_edge_features, distance, backbone_dihedral, sidechain_dihedral
-from .numeric_edge import compute_edge_features_rich
+from .numeric_edge import compute_edge_features_rich, compute_edge_features_sparse_v3
 from .rotary_matrix import calculate_relative_rotation_matrix, calculate_relative_sidechain_rotation
 from .params import (
     C_DELTA,
@@ -263,7 +263,7 @@ def read_struct_cc(
     # shape: (num_residues, num_residues)
     res_id_short = th.arange(0, num_residues)
     if helix_indices is not None and helix_indices.numel() > 0:
-        efeats = compute_edge_features_rich(
+        efeats = compute_edge_features_sparse_v3(
             res_index=res_number, segment_id=segment_ids, chain_id=chain_id, u=u, v=v
         )
     else:

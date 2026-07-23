@@ -78,6 +78,7 @@ def test_rich_edge_matches_direct_call(pdb):
         v=sd.v,
         num_rpe_freqs=NUM_RPE_FREQS,
     )
+    breakpoint()
     assert th.allclose(sd.efeats, expected)
 
 

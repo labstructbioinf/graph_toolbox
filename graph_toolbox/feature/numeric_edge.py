@@ -101,3 +101,57 @@ def compute_edge_features_rich(
     ], dim=-1)
     
     return edge_feats
+
+
+import torch as th
+import math
+
+def compute_edge_features_sparse_v3(
+    res_index: th.Tensor, 
+    segment_id: th.Tensor, 
+    chain_id: th.Tensor,
+    u: th.Tensor, 
+    v: th.Tensor, 
+    num_rpe_freqs: int = 16,
+    clamp_dist: float = 64.0
+) -> th.Tensor:
+    
+    assert num_rpe_freqs % 2 == 0
+    
+    is_self = (u == v).float().unsqueeze(-1)
+    is_cross_segment = (segment_id[u] != segment_id[v]).float().unsqueeze(-1)
+    is_cross_chain = (chain_id[u] != chain_id[v]).float().unsqueeze(-1)
+    
+    # 1. Sequence Difference
+    seq_diff_raw = (res_index[v] - res_index[u]).float()
+    seq_diff = seq_diff_raw * (1 - is_cross_chain).squeeze(-1) 
+    seq_diff = th.clamp(seq_diff, min=-clamp_dist, max=clamp_dist)
+    
+    # NEW: Pass normalized sequential distance explicitly so the MLP doesn't 
+    # have to decode it from sine waves for distance regression.
+    seq_dist_norm = (seq_diff.unsqueeze(-1) / clamp_dist)
+    
+    # 2. Revert to Exponential RPE (Better for regression tasks)
+    inv_freq = th.exp(
+        th.arange(0, num_rpe_freqs, 2, dtype=th.float32, device=res_index.device) 
+        * -(math.log(100.0) / num_rpe_freqs)
+    )
+    angles = seq_diff.unsqueeze(-1) * inv_freq
+    rpe_feats = th.cat([th.sin(angles), th.cos(angles)], dim=-1)
+    rpe_feats = rpe_feats * (1 - is_cross_segment) * (1 - is_cross_chain)
+    
+    # 3. Polarity
+    dir_forward = ((seq_diff > 0) & (u != v)).float().unsqueeze(-1) * (1 - is_cross_segment) * (1 - is_cross_chain)
+    dir_backward = ((seq_diff < 0) & (u != v)).float().unsqueeze(-1) * (1 - is_cross_segment) * (1 - is_cross_chain)
+    
+    edge_feats = th.cat([
+        is_cross_segment,  
+        is_cross_chain,    
+        is_self,           
+        dir_forward,       
+        dir_backward, 
+        seq_dist_norm,     # <-- NEW: Explicit clamped distance
+        rpe_feats          
+    ], dim=-1)
+    
+    return edge_feats
