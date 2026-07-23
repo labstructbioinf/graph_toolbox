@@ -13,7 +13,7 @@ from graph_toolbox.feature.cc_specific import helix_indices_from_series
 
 from .calc import read_struct, StructFeats
 from .cc_calc import read_struct_cc, StructFeatsCC
-from .params import ACIDS_MAP_DEF, ACIDS_MAP_DEF3, SS_MAP_EXT, FEATNAME, NFEATNAME
+from .params import ACIDS_MAP_DEF, ACIDS_MAP_DEF3, SS_MAP_EXT, FEATNAME, NFEATNAME, rich_edge_feature_names
 
 
 _PDBCHAIN_COL = "pdb_chain"
@@ -73,7 +73,11 @@ class GraphData:
         self.u = u
         self.v = v
         self.nfeats = nfeats
-        self.efeatname = StructFeats.edge_features(with_interactions=with_interactions)
+        if segment_id is not None:
+            # CC flow: rich spectral edge features (5 flags + RPE spectrum)
+            self.efeatname = rich_edge_feature_names(efeats.shape[1] - 5)
+        else:
+            self.efeatname = StructFeats.edge_features(with_interactions=with_interactions)
         self.num_nodes = nfeats.shape[0]
         self.backbone_relrot = backbone_relrot
         self.sidechain_relrot = sidechain_relrot

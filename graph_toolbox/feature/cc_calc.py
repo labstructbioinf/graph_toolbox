@@ -14,7 +14,8 @@ import numpy as np
 #from biopandas.pdb import PandasPdb
 
 from .models import StructFeats, StructFeatsCC
-from .numeric import compute_edge_features, compute_edge_features_sparse, distance, backbone_dihedral, sidechain_dihedral
+from .numeric import compute_edge_features, distance, backbone_dihedral, sidechain_dihedral
+from .numeric_edge import compute_edge_features_rich
 from .rotary_matrix import calculate_relative_rotation_matrix, calculate_relative_sidechain_rotation
 from .params import (
     C_DELTA,
@@ -243,6 +244,9 @@ def read_struct_cc(
     segment_ids = th.ones(num_residues, dtype=th.long)
     segment_ids[helix_indices] = 0
 
+    # integer chain id per residue (rich edge features need a numeric chain tensor)
+    chain_id = th.as_tensor(np.unique(res_chain_np, return_inverse=True)[1], dtype=th.long)
+
     ca_dist = distance(res_ca)
     cb_dist = distance(res_cb)
     
@@ -259,7 +263,9 @@ def read_struct_cc(
     # shape: (num_residues, num_residues)
     res_id_short = th.arange(0, num_residues)
     if helix_indices is not None and helix_indices.numel() > 0:
-        efeats = compute_edge_features_sparse(res_number, segment_id=segment_ids, u=u, v=v)
+        efeats = compute_edge_features_rich(
+            res_index=res_number, segment_id=segment_ids, chain_id=chain_id, u=u, v=v
+        )
     else:
         raise NotImplementedError("edge features without helix_indices not implemented")
     # dihedral angles

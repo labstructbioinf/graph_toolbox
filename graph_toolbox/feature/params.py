@@ -18,6 +18,12 @@ CONTACT_TYPE_FEATS = [  #'cx','cy','cz', 'ljx', 'ljy', 'ljz',
 
 FEATNAME = INTERACTION_FEATS + CONTACT_TYPE_FEATS
 
+
+def rich_edge_feature_names(num_rpe_freqs: int = 16) -> list[str]:
+    """names for `compute_edge_features_rich` output (5 flags + RPE sin/cos)"""
+    base = ["is_cross_seg", "is_cross_chain", "is_self", "dir_fwd", "dir_bwd"]
+    return base + [f"rpe_{i}" for i in range(num_rpe_freqs)]
+
 # fix order
 NFEATNAME = ["phi", "psi", "omega", "chi1", "chi2"]
 

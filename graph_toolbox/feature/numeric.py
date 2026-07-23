@@ -3,6 +3,13 @@ import torch as th
 
 import math
 
+def build_rpe_periods(n_freq: int = 16, p_min: float = 2.5, p_max: float = 50.0, device=None) -> th.Tensor:
+    """Log-uniform periods in residues, returned in log space (keeps the bank positive and well
+    conditioned if it is made learnable)."""
+    return th.linspace(math.log(p_min), math.log(p_max), n_freq, device=device)
+
+
+
 def compute_edge_features(res_index: th.Tensor, segment_id: th.Tensor) -> th.Tensor:
     """
     Args:
@@ -79,6 +86,68 @@ def compute_edge_features(res_index: th.Tensor, segment_id: th.Tensor) -> th.Ten
     ), dim=2)
     
     return edge_feats
+
+def compute_edge_features_sparse_fixed(
+    res_index: th.Tensor, 
+    segment_id: th.Tensor, 
+    u: th.Tensor, 
+    v: th.Tensor, 
+    num_rpe_freqs: int = 16
+) -> th.Tensor:
+    """
+    Computes continuous, non-canonical-safe edge features using a sparse edge list representation.
+    Designed directly for edge-augmented message passing layers like EGATConv.
+
+    Args:
+        res_index: Tensor of shape (N,) containing absolute residue indices.
+        segment_id: Tensor of shape (N,) identifying the segment (e.g., 0 for helix, 1 for environment).
+        u: Tensor of shape (E,) containing source node indices for every edge.
+        v: Tensor of shape (E,) containing target node indices for every edge.
+        num_rpe_freqs: Total dimensions allocated for Relative Positional Encoding (must be even).
+
+    Returns:
+        edge_feats: Tensor of shape (E, D) containing calculated features for each edge.
+                    The total dimensionality is D = 4 + num_rpe_freqs.
+                    With default num_rpe_freqs=16, the output shape is (E, 20).
+    """
+    # 1. Directional sequence difference (retains sign to preserve backbone polarity)
+    seq_diff = (res_index[v] - res_index[u]).float()
+    
+    # 2. Interaction Mask (1.0 if edge crosses between helix and environment, 0.0 otherwise)
+    is_cross_segment = (segment_id[u] != segment_id[v]).float().unsqueeze(-1)
+    
+    # 3. Multi-frequency Relative Positional Encoding (Continuous RPE)
+    # Instead of hardcoded buckets, we use a geometric spectrum of frequencies.
+    # Base is scaled to 100.0 to focus heavily on local/coiled-coil scale interactions.
+    inv_freq = th.exp(
+        th.arange(0, num_rpe_freqs, 2, dtype=th.float32, device=res_index.device) 
+        * -(math.log(100.0) / num_rpe_freqs)
+    )
+    
+    angles = seq_diff.unsqueeze(-1) * inv_freq
+    rpe_sin = th.sin(angles)
+    rpe_cos = th.cos(angles)
+    
+    # Concatenate sin/cos components and nullify RPE for cross-segment interactions
+    rpe_feats = th.cat([rpe_sin, rpe_cos], dim=-1) * (1 - is_cross_segment)
+    
+    # 4. Topological and Directional Polarity Flags
+    is_self = (seq_diff == 0).float().unsqueeze(-1)
+    dir_forward = (seq_diff > 0).float().unsqueeze(-1) * (1 - is_cross_segment)
+    dir_backward = (seq_diff < 0).float().unsqueeze(-1) * (1 - is_cross_segment)
+    
+    # Concatenate all components into the final edge feature tensor
+    edge_feats = th.cat([
+        is_cross_segment,  # Index 0: Interface boundary flag
+        is_self,           # Index 1: Self-loop flag
+        dir_forward,       # Index 2: Sequence direction (N -> C)
+        dir_backward,      # Index 3: Sequence direction (C -> N)
+        rpe_feats          # Indices 4 to (4 + num_rpe_freqs - 1): Continuous position spectrum
+    ], dim=-1)
+    
+    return edge_feats
+
+
 
 def compute_edge_features_sparse(
     res_index: th.Tensor, 
