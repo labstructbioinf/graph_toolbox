@@ -1,6 +1,7 @@
 """
-Tests for the rich spectral edge features (`compute_edge_features_rich`) wired into
-the coiled-coil pipeline (`read_struct_cc` -> `GraphData`).
+Tests for the biologically-scaled spectral edge features
+(`compute_edge_features_sparse_bio`) wired into the coiled-coil pipeline
+(`read_struct_cc` -> `GraphData`).
 
 Every test is parametrized over all real structures in ``tests/data/*.pdb``.
 """
@@ -15,7 +16,7 @@ from biopandas.pdb import PandasPdb
 
 from graph_toolbox.feature.cc_calc import read_struct_cc
 from graph_toolbox.feature.base import GraphData
-from graph_toolbox.feature.numeric_edge import compute_edge_features_rich
+from graph_toolbox.feature.numeric_edge import compute_edge_features_sparse_bio
 from graph_toolbox.feature.params import rich_edge_feature_names
 
 test_dir = "tests/data"
@@ -67,10 +68,10 @@ def test_rich_edge_shape(pdb, t):
 
 @pytest.mark.parametrize("pdb", get_test_pdbs())
 def test_rich_edge_matches_direct_call(pdb):
-    """the pipeline output is exactly what compute_edge_features_rich produces"""
+    """the pipeline output is exactly what compute_edge_features_sparse_bio produces"""
     sd = _load_cc(pdb)
     chain_id = _chain_id_tensor(sd.chainids)
-    expected = compute_edge_features_rich(
+    expected = compute_edge_features_sparse_bio(
         res_index=sd.residueid,
         segment_id=sd.segment_id,
         chain_id=chain_id,
@@ -78,7 +79,6 @@ def test_rich_edge_matches_direct_call(pdb):
         v=sd.v,
         num_rpe_freqs=NUM_RPE_FREQS,
     )
-    breakpoint()
     assert th.allclose(sd.efeats, expected)
 
 
@@ -108,17 +108,22 @@ def test_rich_edge_semantics(pdb):
 
 
 @pytest.mark.parametrize("pdb", get_test_pdbs())
-def test_rich_edge_cross_edges_nullified(pdb):
-    """cross-chain / cross-segment edges rely purely on 3D: RPE and direction are zeroed"""
+def test_bio_edge_cross_segment_nullified(pdb):
+    """cross-segment (interface) edges rely purely on 3D: RPE and direction are zeroed.
+
+    Note: unlike the fully-nullifying variant, `compute_edge_features_sparse_bio`
+    keeps the cross-chain sequence difference as an axial register shift, so only
+    cross-segment edges are nullified.
+    """
     sd = _load_cc(pdb)
     f = sd.efeats
-    cross = (f[:, IDX_CROSS_SEG].bool()) | (f[:, IDX_CROSS_CHAIN].bool())
+    cross_seg = f[:, IDX_CROSS_SEG].bool()
 
-    # RPE spectrum fully nullified on cross edges
-    assert th.all(f[cross][:, RPE_SLICE] == 0)
-    # direction flags nullified on cross edges
-    assert th.all(f[cross, IDX_FWD] == 0)
-    assert th.all(f[cross, IDX_BWD] == 0)
+    # RPE spectrum fully nullified on cross-segment edges
+    assert th.all(f[cross_seg][:, RPE_SLICE] == 0)
+    # direction flags nullified on cross-segment edges
+    assert th.all(f[cross_seg, IDX_FWD] == 0)
+    assert th.all(f[cross_seg, IDX_BWD] == 0)
 
 
 @pytest.mark.parametrize("pdb", get_test_pdbs())

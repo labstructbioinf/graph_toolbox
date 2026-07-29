@@ -155,3 +155,110 @@ def compute_edge_features_sparse_v3(
     ], dim=-1)
     
     return edge_feats
+
+
+def compute_edge_features_sparse_bio(
+    res_index: th.Tensor, 
+    segment_id: th.Tensor, 
+    chain_id: th.Tensor, 
+    u: th.Tensor, 
+    v: th.Tensor, 
+    num_rpe_freqs: int = 16,
+    clamp_dist: float = 64.0
+) -> th.Tensor:
+    """
+    Computes continuous, biologically-aware edge features using a sparse edge list.
+    Designed for edge-augmented message passing layers (e.g., EGATConv) in Phase 1 regression 
+    and Phase 2 Coiled-Coil classification tasks.
+
+    WHAT IT DOES:
+    Generates a multidimensional feature vector for every edge in a protein graph, capturing 
+    graph topology, sequence directionality, structural periodicity, and quaternary boundaries.
+
+    WHY IT WORKS (The ML & Biological Rationale):
+    1. Biologically-Scaled Exponential RPE: 
+       Instead of standard NLP positional encodings (which waste dimensions on distances 
+       of 100+ tokens), this sweeps exponentially from a period of T=3.0 to T=30.0. 
+       This directly blankets the biological structural scale, allowing the GNN to naturally 
+       "see" the 3.6-residue alpha-helix pitch and the 7.0-residue heptad repeat. Because it 
+       uses an exponential sweep rather than hardcoded biological numbers, it retains the 
+       smooth regression gradients needed for Phase 1 distance prediction while remaining completely 
+       agnostic to non-canonical repeats (hendecads, pentadecads).
+       
+    2. Axial Register Shift (via Sequence Difference): 
+       By calculating `seq_diff` across distinct chains (assuming per-chain numbering), the network 
+       is fed the "register shift." It instantly learns whether two helices are packed parallel 
+       (shift ~0), staggered (shift > 0), or anti-parallel (negative shift). Clamping this value 
+       prevents gradient explosion if absolute PDB indexing causes artificial numerical gaps.
+       
+    3. Multimer Awareness (`is_cross_chain`): 
+       Without this flag, an EGAT layer cannot distinguish between a single chain folding back on 
+       itself (intra-chain coiled-coil, common in AFDB monomers) and true quaternary packing 
+       (obligate multimers). This explicit flag tells the attention mechanism when to rely on 
+       sequence math versus pure 3D spatial packing, fundamentally improving higher-oligomer accuracy.
+
+    Args:
+        res_index: Tensor of shape (N,) containing per-chain residue indices.
+        segment_id: Tensor of shape (N,) identifying the segment (0: helix, 1: env).
+        chain_id: Tensor of shape (N,) identifying the distinct protein chain.
+        u: Tensor of shape (E,) containing source node indices.
+        v: Tensor of shape (E,) containing target node indices.
+        num_rpe_freqs: Total dimensions for Relative Positional Encoding (must be even).
+        clamp_dist: Maximum register shift / sequence distance to consider before capping.
+
+    Returns:
+        edge_feats: Tensor of shape (E, 5 + num_rpe_freqs).
+    """
+    # Prevent silent dimension mismatches during downstream linear layers
+    assert num_rpe_freqs % 2 == 0, "num_rpe_freqs must be even for sin/cos pairing."
+
+    # 1. Topology & Boundary Flags
+    is_cross_segment = (segment_id[u] != segment_id[v]).float().unsqueeze(-1)
+    is_cross_chain = (chain_id[u] != chain_id[v]).float().unsqueeze(-1)
+    is_self = (u == v).float().unsqueeze(-1)  # True topological self-loop, safe for multimers
+    
+    # 2. Sequence Difference / Axial Register Shift
+    # Intra-chain: Acts as local sequence distance.
+    # Cross-chain: Acts as the axial sliding register shift between helices.
+    seq_diff = (res_index[v] - res_index[u]).float()
+    seq_diff = th.clamp(seq_diff, min=-clamp_dist, max=clamp_dist)
+    
+    # 3. Biologically-Scaled Exponential RPE
+    # Sweep exponentially from T=3.0 (tighter than alpha helix) to T=30.0 (macro-repeats)
+    min_period = 3.0
+    max_period = 30.0
+    
+    # Create an exponential sequence of periods
+    periods = th.exp(
+        th.linspace(
+            math.log(min_period), 
+            math.log(max_period), 
+            num_rpe_freqs // 2, 
+            device=res_index.device
+        )
+    )
+    
+    # Convert periods to angular frequencies (omega = 2 * pi / T)
+    inv_freq = (2 * math.pi) / periods
+    
+    # Calculate angles based on the clamped sequence difference / register shift
+    angles = seq_diff.unsqueeze(-1) * inv_freq
+    
+    # Concatenate sin/cos components (Nullified for cross-segment to match original Phase 1 stability)
+    rpe_feats = th.cat([th.sin(angles), th.cos(angles)], dim=-1) * (1 - is_cross_segment)
+    
+    # 4. Polarity Flags (Direction of the backbone or register shift)
+    dir_forward = ((seq_diff > 0) & (u != v)).float().unsqueeze(-1) * (1 - is_cross_segment)
+    dir_backward = ((seq_diff < 0) & (u != v)).float().unsqueeze(-1) * (1 - is_cross_segment)
+    
+    # 5. Concatenate all components into the final edge feature tensor
+    edge_feats = th.cat([
+        is_cross_segment,  # Index 0: Interface boundary flag
+        is_cross_chain,    # Index 1: Chain boundary flag (CRITICAL for higher oligomers)
+        is_self,           # Index 2: True topological self-loop flag
+        dir_forward,       # Index 3: Sequence direction (N -> C)
+        dir_backward,      # Index 4: Sequence direction (C -> N)
+        rpe_feats          # Indices 5+: Continuous biological position spectrum
+    ], dim=-1)
+    
+    return edge_feats
