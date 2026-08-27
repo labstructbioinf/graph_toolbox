@@ -44,7 +44,8 @@ def read_struct_cc(
 ) -> StructFeatsCC:
     """
     Parses structural features from a PDB dataframe.
-
+    * adds self loops for further graph processing
+    * adds pseudo cb for glycine
     Parameters
     ----------
     pdbloc : pd.DataFrame

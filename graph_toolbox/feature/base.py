@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import pickle
 from biopandas.pdb import PandasPdb
 
+
 import numpy as np
 import pandas as pd
 import torch
@@ -11,7 +12,7 @@ import dgl
 
 from graph_toolbox.feature.cc_specific import helix_indices_from_series
 
-from .calc import read_struct, StructFeats
+from graph_toolbox.feature.cc_calc import read_struct_cc, StructFeatsCC
 from .params import ACIDS_MAP_DEF, ACIDS_MAP_DEF3, SS_MAP_EXT, FEATNAME, NFEATNAME, rich_edge_feature_names
 
 
@@ -76,7 +77,7 @@ class GraphData:
             # CC flow: rich spectral edge features (5 flags + RPE spectrum)
             self.efeatname = rich_edge_feature_names(efeats.shape[1] - 5)
         else:
-            self.efeatname = StructFeats.edge_features(with_interactions=with_interactions)
+            self.efeatname = StructFeatsCC.edge_features(with_interactions=with_interactions)
         self.num_nodes = nfeats.shape[0]
         self.backbone_relrot = backbone_relrot
         self.sidechain_relrot = sidechain_relrot
@@ -98,24 +99,8 @@ class GraphData:
         """
         from pdb file
         """
-        if (not isinstance(path, pd.DataFrame)) and (not os.path.isfile(path)):
-            raise FileNotFoundError(f"missing .pdb file for: {path}")
-        try:
-            structdata = read_struct(path, t=ca_threshold)
-        except Exception as e:
-            raise GraphObjectError(e)
-        _seqlen = len(structdata.sequence)
-        _nodes = max(structdata.u.max().item(), structdata.v.max().item()) + 1
-        if _seqlen != _nodes:
-            raise GraphObjectError(
-                f"sequence is not matching Ca-Ca nodes {_seqlen} vs {_nodes}"
-            )
-        if _INVALID_AA & set(structdata.sequence):
-            raise GraphObjectError(
-                f"invalid aa in sequence {set(structdata) - _INVALID_AA}"
-            )
-        return cls(path=path, code=code, **structdata.asdict())
-
+        raise NotImplementedError("this method is no longer available")
+    
     @classmethod
     def from_h5(
         cls, path: str, key: str, ca_threshold=7, dssp: list[str] = None, with_interactions: bool = True, with_relative_rotations: bool = False
@@ -127,11 +112,7 @@ class GraphData:
             ca_threshold (float): ca-ca A threshold
             with_interactions (bool): If true attaches residue-residue interactions to edge featrues
         """
-        atoms = pd.read_hdf(path, key=key, mode="r")
-        structdata = read_struct(
-            atoms, t=ca_threshold, with_interactions=with_interactions, with_relative_rotations=with_relative_rotations
-        )
-        return cls(code=key, **structdata.asdict())
+        raise NotImplementedError("this method is no longer available")
 
     @classmethod
     def from_h5_contrastive(cls, path: str, key: str, env_metadata, ca_threshold=7) -> "GraphData":
