@@ -17,19 +17,6 @@ from .models import StructFeats
 from .numeric import compute_edge_features, distance, backbone_dihedral, sidechain_dihedral
 from .rotary_matrix import calculate_relative_rotation_matrix, calculate_relative_sidechain_rotation
 from .params import (
-    #BACKBONE,
-    #HYDROPHOBIC,
-    #AROMATIC,
-    #CATION_PI,
-    #SALT_BRIDGE_C1,
-    #SALT_BRIDGE_C2,
-    #CHARGE,
-    #SIGMA,
-    #EPSILON,
-    #HYDROGEN_ACCEPTOR,
-    #HYDROGEN_DONOR,
-    #VDW_RADIUS,
-    #VDW_ATOMS,
     C_DELTA,
     C_GAMMA,
     #aa_trans,
@@ -288,8 +275,14 @@ def read_struct(
     # fill self CB distance to 0
     cb_dist = cb_dist.fill_diagonal_(0)
 
-    # define CA contacts (row and column indexes) below the cut-off parameter `t`
-    u, v = th.where(ca_dist < t)
+    # define CA contacts (row and column indexes) below the cut-off parameter `t`.
+    # Force the diagonal on so every residue always keeps exactly one self-loop,
+    # independent of the cut-off `t` or the CA-CA geometry. DGL expects self-loops
+    # and otherwise warns about 0-in-degree nodes. `th.where` emits each (i, i)
+    # once, so this stays idempotent (no duplicated self-loops).
+    contact_mask = ca_dist < t
+    contact_mask.fill_diagonal_(True)
+    u, v = th.where(contact_mask)
 
     # is_seq[i, j] stores the sequence distance |i - j| between residue indices; 
     # shape: (num_residues, num_residues)

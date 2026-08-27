@@ -220,6 +220,22 @@ def distance(xyz1: th.Tensor, xyz2: Optional[th.Tensor] = None):
 
 
 @th.jit.script
+def virtual_cb(n: th.Tensor, ca: th.Tensor, c: th.Tensor) -> th.Tensor:
+    """
+    Idealized (virtual) CB position from the backbone N, CA, C atoms.
+
+    Uses the standard tetrahedral placement constants (trRosetta/RGN) that
+    reproduce ideal CB geometry from the regular backbone frame. Fully
+    vectorized over residues (a single cross-product), so it is cheap; used to
+    fill glycine's missing CB. Shape (..., 3) -> (..., 3).
+    """
+    b = ca - n
+    cc = c - ca
+    a = th.linalg.cross(b, cc)
+    return -0.58273431 * a + 0.56802827 * b - 0.54067466 * cc + ca
+
+
+@th.jit.script
 def dotproduct(xyz1, xyz2):
     return (xyz1 * xyz2).sum(-1, keepdim=True)
 

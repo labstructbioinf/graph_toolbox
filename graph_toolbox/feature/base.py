@@ -12,7 +12,6 @@ import dgl
 from graph_toolbox.feature.cc_specific import helix_indices_from_series
 
 from .calc import read_struct, StructFeats
-from .cc_calc import read_struct_cc, StructFeatsCC
 from .params import ACIDS_MAP_DEF, ACIDS_MAP_DEF3, SS_MAP_EXT, FEATNAME, NFEATNAME, rich_edge_feature_names
 
 

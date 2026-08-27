@@ -14,7 +14,7 @@ import numpy as np
 #from biopandas.pdb import PandasPdb
 
 from .models import StructFeats, StructFeatsCC
-from .numeric import compute_edge_features, distance, backbone_dihedral, sidechain_dihedral
+from .numeric import compute_edge_features, distance, backbone_dihedral, sidechain_dihedral, virtual_cb
 from .numeric_edge import compute_edge_features_sparse_bio
 from .rotary_matrix import calculate_relative_rotation_matrix, calculate_relative_sidechain_rotation
 from .params import (
@@ -240,6 +240,12 @@ def read_struct_cc(
     res_cg = th.FloatTensor(cg_xyz)
     res_cd = th.FloatTensor(cd_xyz)
 
+    # glycine lacks a CB atom (nan placeholder above); fill an idealized virtual
+    # CB from the backbone N, CA, C so cb_dist / distancemx are NaN-free.
+    # Vectorized single cross-product -> negligible cost; real CBs untouched.
+    gly_mask = th.isnan(res_cb).any(dim=-1, keepdim=True)
+    res_cb = th.where(gly_mask, virtual_cb(res_n, res_ca, res_c), res_cb)
+
     # binary mask of helix residues
     segment_ids = th.ones(num_residues, dtype=th.long)
     segment_ids[helix_indices] = 0
@@ -256,8 +262,14 @@ def read_struct_cc(
     # fill self CB distance to 0
     cb_dist = cb_dist.fill_diagonal_(0)
 
-    # define CA contacts (row and column indexes) below the cut-off parameter `t`
-    u, v = th.where(ca_dist < t)
+    # define CA contacts (row and column indexes) below the cut-off parameter `t`.
+    # Force the diagonal on so every residue always keeps exactly one self-loop,
+    # independent of the cut-off `t` or the CA-CA geometry. DGL expects self-loops
+    # and otherwise warns about 0-in-degree nodes. `th.where` emits each (i, i)
+    # once, so this stays idempotent (no duplicated self-loops).
+    contact_mask = ca_dist < t
+    contact_mask.fill_diagonal_(True)
+    u, v = th.where(contact_mask)
 
     # is_seq[i, j] stores the sequence distance |i - j| between residue indices; 
     # shape: (num_residues, num_residues)
